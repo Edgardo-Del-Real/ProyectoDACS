@@ -15,6 +15,8 @@
 - **Stack:** **Node + TypeScript**, tanto para el BFF como para los microservicios (reutiliza
   lenguaje, tipos y tooling con el frontend).
 - **Deploy:** **no** se despliega con GitHub Pages (descartado).
+- **BFF framework:** **Fastify** (ver [`decisiones.md`](./decisiones.md) D1, reversible si la cátedra exige otro).
+- **DB:** **Postgres + PostGIS** y mensajería **RabbitMQ** para jobs async (ver `decisiones.md` D2-D3).
 
 ---
 
