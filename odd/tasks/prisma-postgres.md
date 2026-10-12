@@ -10,7 +10,7 @@ Objetivo: capa DB con Prisma + Postgres para Parcela y Precios, reversible. Bran
 - T1 (S3): mutar D2 en docs/decisiones.md — route: inline — status: completed — commit: pending
 - T2 (S2): apps/bff/prisma/schema.prisma + cliente + /ready — route: inline — status: completed — commit: pending — evidence: validate OK, generate OK v7.10.0, typecheck OK, /health 200, /ready 503 sin DB (correcto)
 - T3: verificación generate + typecheck + health + commit — route: inline — status: completed — commit: bc5e199
-- Verificación: validate OK, generate v7.10.0 OK, typecheck OK, /health 200, /ready 503 sin DB (correcto, sube a ready con compose). Migrate dev pendiente con Docker.
+- Verificación: validate OK, generate v7.10.0 OK, typecheck OK, /health 200, migrate dev 20261012215114_init aplicada con Docker Desktop, /ready 200 db up.
 - Mirror Engram: pending.
 
 ## Log
