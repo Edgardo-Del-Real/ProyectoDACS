@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Usuario {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  nombre    String?
+  createdAt DateTime  @default(now())
+  parcelas  Parcela[]
+}
+
+model Parcela {
+  id              String   @id @default(cuid())
+  userId          String
+  nombre          String?
+  // GeoJSON del polígono (Feature o Polygon). Prisma Postgres no mapea geometry nativo;
+  // PostGIS queda disponible vía $queryRaw cuando se necesite ST_Area/ST_Contains.
+  poligono        Json
+  hectareas       Float
+  cultivoAnterior String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  usuario         Usuario  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Precio {
+  id      String   @id @default(cuid())
+  cultivo String
+  fecha   DateTime @db.Date
+  fuente  String
+  valor   Float
+  createdAt DateTime @default(now())
+
+  @@unique([cultivo, fecha, fuente])
+  @@index([cultivo, fecha])
+}

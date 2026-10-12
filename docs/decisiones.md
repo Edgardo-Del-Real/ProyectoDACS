@@ -8,11 +8,12 @@
 - **Alternativa descartada:** NestJS (módulos + DI por reflection). Ordena 7 micros pero esconde lo que el TP quiere enseñar y suma boilerplate para defender.
 - **Si muta:** si la cátedra exige Nest, el contrato `VITE_API_URL → BFF` y `GET /health` no cambian. Solo cambia el scaffolding de `apps/bff` (módulos/controllers). Este doc se versiona con el cambio.
 
-## D2 — Postgres + PostGIS como DB principal
-- **Decisión:** `postgis/postgis:16-3.4` en Compose, DB `dacs`, modelo `Parcela {id, userId, polígono GeoJSON, hectáreas}`.
-- **Por qué:** US-01 guarda polígonos y calcula hectáreas. PostGIS da tipos `geometry`, `ST_Area`, `ST_Contains` e índices GIST. Postgres simple con JSONB te deja el cálculo en JS y migrás igual después.
-- **Alternativa descartada:** SQLite liviano (cero infra pero sin queries geo, migración obligada en US-03/US-04).
-- **Si muta:** si la cátedra pide otro motor, se cambia `db` en `docker-compose.yml` y `DATABASE_URL`. El modelo Parcela se mantiene.
+## D2 — Prisma + Postgres como capa DB (muta 2026-10-12)
+- **Decisión:** Prisma ORM con Postgres (compose sigue en `postgis/postgis:16-3.4` como Postgres compatible). Schema en `apps/bff/prisma/schema.prisma`: `Usuario`, `Parcela {polígono Json + hectáreas}`, `Precio {cultivo, fecha, fuente, valor}`.
+- **Por qué:** priorizás DX y velocidad sobre SQL explícito. Migraciones, cliente tipado y studio sin escribir SQL a mano.
+- **Alternativa descartada:** `pg` + `node-pg-migrate` con SQL PostGIS explícito (más didáctico para defender geo, pero más boilerplate).
+- **Geo:** Prisma Postgres no mapea `geometry` nativo; se guarda GeoJSON en `Json` y el cálculo va en JS (turf) por ahora. PostGIS queda disponible vía `$queryRaw` cuando se necesite `ST_Area`/`ST_Contains` sin cambiar de motor.
+- **Si muta:** si la cátedra impone otro ORM o SQL puro, se aísla en `apps/bff/src/db`. El contrato `/api/parcelas` y el compose no cambian.
 
 ## D3 — Comunicación por mensajería async (RabbitMQ)
 - **Decisión:** REST interno para sync (`BFF → micros` por DNS de Compose) + RabbitMQ para jobs async (precios US-02, alertas US-05).
