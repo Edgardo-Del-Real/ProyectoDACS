@@ -129,6 +129,12 @@ planificación conjunta de cooperativas.
 | RNF-16 | Observabilidad | Logs estructurados y endpoint de salud (`/health`) en cada servicio. |
 | RNF-17 | Cumplimiento | Atribución de fuentes de datos y mapas según los términos de cada proveedor; tratamiento de datos personales conforme a la Ley 25.326. |
 
+> 💬 **Comentario de arquitectura (D1 — API Gateway vs. BFF):**
+> En los requisitos (RNF-04) y en las HU se menciona "API Gateway". Para la arquitectura definida en este repositorio, el rol de API Gateway y de orquestador UI lo absorbe **el BFF (`apps/bff` con Fastify)**. No montamos un reverse proxy separado; el BFF centraliza CORS, validación de JWT y orquestación hacia los dominios internos. Ver [`docs/decisiones.md`](./decisiones.md) (D1).
+
+> 💬 **Comentario de arquitectura (D2 — Persistencia y aislamiento):**
+> RNF-12 indica *"Cada servicio con su propia base de datos o esquema"*. Para evitar sobrecarga en Docker Compose durante el TP, adoptamos **una única instancia de PostgreSQL (PostGIS) con Prisma**, segregando las responsabilidades por tablas y esquemas lógicos. No se levantan múltiples instancias de Postgres. Ver [`docs/decisiones.md`](./decisiones.md) (D2).
+
 ---
 
 ## 4. Modelado de dominio
@@ -178,6 +184,9 @@ planificación conjunta de cooperativas.
 | Reportes | Media-baja | Generación de PDF con plantilla. Bajo riesgo, depende de datos terminados. | Recomendación, Simulación | Quien termine antes; **fase 2** |
 | Frontend | Media-alta | Mapa con dibujo de polígonos, paneles, gráficos y consumo del Gateway. Concentra mucho trabajo visible. | Gateway | 1 o 2 integrantes dedicados |
 | Infraestructura | Media | Docker Compose, HTTPS, variables de entorno, CI. Transversal. | Todos | Rol compartido con Gateway |
+
+> 💬 **Comentario de arquitectura (D4 — Granularidad inicial de microservicios):**
+> Aunque la tabla y el desglose teórico listan más de 10 servicios aislados, en el arranque adoptamos la decisión **D4**: agrupar los dominios en 3-4 servicios lógicos (`bff`, `parcelas + usuarios`, `mercado + simulacion`, `agro + alertas`). Evitamos la sobrecarga de mantener 10 `package.json` vacíos y múltiples puertos/contenedores desde el día uno. Si la cátedra exige despliegue físico independiente más adelante, los módulos ya estarán desacoplados por carpetas en `services/`. Ver [`docs/decisiones.md`](./decisiones.md) (D4).
 
 ### 5.2 Fases de trabajo
 
