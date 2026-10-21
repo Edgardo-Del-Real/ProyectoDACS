@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const DashboardView: React.FC = () => {
@@ -15,12 +16,12 @@ export const DashboardView: React.FC = () => {
           </p>
         </div>
         <div>
-          <button
-            type="button"
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-sm transition flex items-center gap-2"
+          <Link
+            to="/parcelas/nueva"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-sm transition inline-flex items-center gap-2"
           >
             <span>+</span> Nueva Parcela
-          </button>
+          </Link>
         </div>
       </div>
 
