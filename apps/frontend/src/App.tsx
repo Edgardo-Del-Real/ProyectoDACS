@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { NuevaParcela } from './pages/NuevaParcela';
+import { DetalleParcela } from './pages/DetalleParcela';
 import './App.css';
 
 function Home() {
@@ -29,6 +30,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/parcelas/nueva" element={<NuevaParcela />} />
+        <Route path="/parcelas/:id" element={<DetalleParcela />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

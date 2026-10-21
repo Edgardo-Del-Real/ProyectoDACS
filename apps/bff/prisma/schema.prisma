@@ -24,17 +24,18 @@ model Usuario {
 }
 
 model Parcela {
-  id        String            @id @default(cuid())
-  userId    String
-  nombre    String?
+  id         String            @id @default(cuid())
+  userId     String
+  nombre     String?
   // GeoJSON del polígono (Feature o Polygon). Prisma Postgres no mapea geometry nativo;
   // PostGIS queda disponible vía $queryRaw cuando se necesite ST_Area/ST_Contains.
-  poligono  Json
-  hectareas Float
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  usuario   Usuario           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campanias CampaniaCultivo[]
+  poligono   Json
+  hectareas  Float
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  usuario    Usuario           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campanias  CampaniaCultivo[]
+  pronostico PronosticoClima?
 
   @@index([userId])
 }
@@ -51,6 +52,17 @@ model CampaniaCultivo {
   parcela       Parcela  @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
 
   @@index([parcelaId])
+}
+
+// Cache de pronóstico del clima (Open-Meteo) por parcela.
+// Un registro por parcela con los 7 días de pronóstico.
+// fetchedAt marca cuándo se obtuvo; TTL 3 horas (RNF-08).
+model PronosticoClima {
+  id        String   @id @default(cuid())
+  parcelaId String   @unique
+  datos     Json     // Array de { fecha, tempMax, tempMin, precipitacion }
+  fetchedAt DateTime @default(now())
+  parcela   Parcela  @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
 }
 
 model Precio {
