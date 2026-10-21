@@ -20,7 +20,8 @@ Objetivo: ver el pronóstico de 7 días de una parcela usando Open-Meteo, con ca
 - T3: implementar servicio Open-Meteo client con caché y fallback — route: inline — status: completed — evidence: servicio creado con TTL 3h, caché DB, fallback a datos stale
 - T4: endpoint BFF GET /api/parcelas/:id/clima — route: inline — status: completed — evidence: ruta registrada, auth JWT, validación ownership, build OK
 - T5: frontend página detalle de parcela con pronóstico — route: inline — status: completed — evidence: página DetalleParcela creada, routing /parcelas/:id agregado, build OK
-- T6: verificación end-to-end + commit work-unit — route: inline — status: pending
+- T6: verificación end-to-end + commit work-unit — route: inline — status: completed — commit: 31ffe8a — evidence: registro/login/parcela OK, endpoint /clima responde con 7 días de pronóstico, stale:false, fallback listo
 
 ## Log
 - L1 (2026-10-21): Usuario eligió US-05 como próximo feature. Branch creada desde main.
+- L2 (2026-10-21): Implementación completa. Commit 31ffe8a. Verificación end-to-end OK: registro, login, crear parcela, obtener pronóstico con 7 días. Caché y fallback implementados.
