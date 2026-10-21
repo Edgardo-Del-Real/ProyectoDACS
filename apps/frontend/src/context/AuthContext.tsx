@@ -42,6 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(mockToken);
     localStorage.setItem('dacs_user', JSON.stringify(mockUser));
     localStorage.setItem('dacs_token', mockToken);
+    localStorage.setItem('token', mockToken);
   };
 
   const logout = () => {
@@ -49,6 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     localStorage.removeItem('dacs_user');
     localStorage.removeItem('dacs_token');
+    localStorage.removeItem('token');
   };
 
   const register = () => {

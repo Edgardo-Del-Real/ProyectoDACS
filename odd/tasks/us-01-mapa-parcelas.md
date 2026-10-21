@@ -26,6 +26,5 @@ Objetivo: alta de parcela con mapa satelital, dibujo de polígono y cálculo de 
 - L2 (2026-10-21): Verificación end-to-end completa con Docker Desktop. Flujo probado: registro → login → JWT → crear parcela → listar parcelas → validación geometría inválida. Todo OK.
 - L3 (2026-10-21): Ajuste puerto BFF a 8090 (8080 ocupado). Frontend corre directo sin npm install para evitar conflictos de workspaces.
 - L4 (2026-10-21): Commits finales: 77e8e29 (implementación), e6e1eed (verificación end-to-end y ajustes).
-- L2 (2026-10-21): Verificación end-to-end completa. Stack Docker levantado con puerto 8090 para BFF (8080 ocupado por otro proyecto). Flujo probado: registro → login → crear parcela → listar parcelas → validación geometría. Todo OK.
 - Análisis: US-01 tiene criterios claros. Auth se mockea por ahora (no bloquea el mapa). Cálculo de área en frontend con turf.js es más rápido que PostGIS para este slice. Validación de geometría va en backend como defensa.
 - Next: T1 instalación Leaflet + Geoman.

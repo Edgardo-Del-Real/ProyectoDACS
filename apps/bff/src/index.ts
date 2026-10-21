@@ -4,6 +4,7 @@ import { prisma } from './db.js';
 import { setupAuth } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { parcelasRoutes } from './routes/parcelas.js';
+import { climaRoutes } from './routes/clima.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -21,6 +22,8 @@ await app.register(authRoutes, { prefix: '/api/auth' });
 // Rutas de parcelas
 await app.register(parcelasRoutes, { prefix: '/api/parcelas' });
 
+// Rutas de clima
+await app.register(climaRoutes, { prefix: '/api/parcelas' });
 app.get('/health', async () => {
   return { status: 'ok', service: 'bff', version: '0.0.0' };
 });
