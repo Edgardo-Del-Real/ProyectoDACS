@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { prisma } from './db.js';
+import { setupAuth } from './plugins/auth.js';
+import { authRoutes } from './routes/auth.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -8,6 +10,12 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 const app = Fastify({ logger: true });
 
 await app.register(cors, { origin: true });
+
+// Setup de JWT y autenticación
+await setupAuth(app);
+
+// Rutas de autenticación
+await app.register(authRoutes, { prefix: '/api/auth' });
 
 app.get('/health', async () => {
   return { status: 'ok', service: 'bff', version: '0.0.0' };
