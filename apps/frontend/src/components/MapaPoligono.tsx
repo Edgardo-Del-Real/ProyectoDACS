@@ -62,7 +62,7 @@ function GeomanController({ onPolygonChange }: MapaPoligonoProps) {
       map.off('pm:edit', onEdit);
       map.off('pm:remove', onRemove);
     };
-  }, [map, computeFromLayer]);
+  }, [map, computeFromLayer, onPolygonChange]);
 
   return null;
 }
