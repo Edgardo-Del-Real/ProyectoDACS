@@ -124,6 +124,8 @@ export function DetalleParcela() {
     };
 
     obtenerPronostico();
+    // Carga de datos al montar (sincroniza con la API). El setState del spinner es intencional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     cargarCampanias();
   }, [id, cargarCampanias]);
 
@@ -167,8 +169,9 @@ export function DetalleParcela() {
       setObservaciones('');
       setMostrarFormCampania(false);
       await cargarCampanias();
-    } catch (err: any) {
-      alert(err.message || 'No se pudo guardar la campaña');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo guardar la campaña';
+      alert(message);
     } finally {
       setGuardandoCampania(false);
     }
@@ -195,7 +198,7 @@ export function DetalleParcela() {
       }
 
       await cargarCampanias();
-    } catch (err) {
+    } catch {
       alert('No se pudo eliminar el registro de campaña');
     }
   };
