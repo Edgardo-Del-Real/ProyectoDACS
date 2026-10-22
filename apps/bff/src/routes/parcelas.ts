@@ -201,4 +201,164 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       return parcelas;
     },
   );
+
+  // --- US-04: Historial de Campañas de la Parcela ---
+
+  // GET /api/parcelas/:id/campanias - Listar historial ordenado por campaña
+  app.get<{ Params: { id: string } }>(
+    '/:id/campanias',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const parcelaId = request.params.id;
+
+      // Validar ownership
+      const parcela = await prisma.parcela.findFirst({
+        where: { id: parcelaId, userId },
+      });
+
+      if (!parcela) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      const campanias = await prisma.campaniaCultivo.findMany({
+        where: { parcelaId },
+        orderBy: { campania: 'desc' },
+      });
+
+      return campanias;
+    },
+  );
+
+  // POST /api/parcelas/:id/campanias - Registrar un cultivo en una campaña
+  app.post<{
+    Params: { id: string };
+    Body: { cultivo: string; campania: string; rindeReal?: number; observaciones?: string };
+  }>(
+    '/:id/campanias',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['cultivo', 'campania'],
+          properties: {
+            cultivo: { type: 'string', minLength: 1 },
+            campania: { type: 'string', minLength: 4 }, // ej: "2024/2025" o "2024"
+            rindeReal: { type: 'number' },
+            observaciones: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const parcelaId = request.params.id;
+      const { cultivo, campania, rindeReal, observaciones } = request.body;
+
+      // Validar ownership
+      const parcela = await prisma.parcela.findFirst({
+        where: { id: parcelaId, userId },
+      });
+
+      if (!parcela) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      const nuevaCampania = await prisma.campaniaCultivo.create({
+        data: {
+          parcelaId,
+          cultivo: cultivo.trim(),
+          campania: campania.trim(),
+          rindeReal: rindeReal ?? null,
+          observaciones: observaciones?.trim() || null,
+        },
+      });
+
+      return reply.code(201).send(nuevaCampania);
+    },
+  );
+
+  // PUT /api/parcelas/:id/campanias/:campaniaId - Editar registro de campaña
+  app.put<{
+    Params: { id: string; campaniaId: string };
+    Body: { cultivo?: string; campania?: string; rindeReal?: number; observaciones?: string };
+  }>(
+    '/:id/campanias/:campaniaId',
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id: parcelaId, campaniaId } = request.params;
+      const { cultivo, campania, rindeReal, observaciones } = request.body;
+
+      // Validar ownership
+      const parcela = await prisma.parcela.findFirst({
+        where: { id: parcelaId, userId },
+      });
+
+      if (!parcela) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      // Validar que la campaña pertenezca a la parcela
+      const campaniaExistente = await prisma.campaniaCultivo.findFirst({
+        where: { id: campaniaId, parcelaId },
+      });
+
+      if (!campaniaExistente) {
+        return reply.code(404).send({ error: 'Campaña no encontrada' });
+      }
+
+      const campaniaActualizada = await prisma.campaniaCultivo.update({
+        where: { id: campaniaId },
+        data: {
+          ...(cultivo && { cultivo: cultivo.trim() }),
+          ...(campania && { campania: campania.trim() }),
+          ...(rindeReal !== undefined && { rindeReal }),
+          ...(observaciones !== undefined && { observaciones: observaciones.trim() || null }),
+        },
+      });
+
+      return reply.code(200).send(campaniaActualizada);
+    },
+  );
+
+  // DELETE /api/parcelas/:id/campanias/:campaniaId - Eliminar registro de campaña
+  app.delete<{
+    Params: { id: string; campaniaId: string };
+  }>(
+    '/:id/campanias/:campaniaId',
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id: parcelaId, campaniaId } = request.params;
+
+      // Validar ownership
+      const parcela = await prisma.parcela.findFirst({
+        where: { id: parcelaId, userId },
+      });
+
+      if (!parcela) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      const campaniaExistente = await prisma.campaniaCultivo.findFirst({
+        where: { id: campaniaId, parcelaId },
+      });
+
+      if (!campaniaExistente) {
+        return reply.code(404).send({ error: 'Campaña no encontrada' });
+      }
+
+      await prisma.campaniaCultivo.delete({
+        where: { id: campaniaId },
+      });
+
+      return reply.code(200).send({ message: 'Campaña eliminada correctamente' });
+    },
+  );
 };
