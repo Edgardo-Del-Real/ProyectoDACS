@@ -1,7 +1,11 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MapaPoligono } from '../components/MapaPoligono';
+import { useAuth } from '../context/useAuth';
 
 export function NuevaParcela() {
+  const { token } = useAuth();
+  const navigate = useNavigate();
   const [nombre, setNombre] = useState('');
   const [poligono, setPoligono] = useState<GeoJSON.Polygon | null>(null);
   const [hectareas, setHectareas] = useState<number | null>(null);
@@ -19,20 +23,29 @@ export function NuevaParcela() {
     if (!nombre.trim() || !poligono) return;
     setGuardando(true);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(
         `${import.meta.env.VITE_API_URL ?? ''}/api/parcelas`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ nombre, poligono, hectareas }),
         },
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // TODO: redirect to parcel list on success
-      alert('Parcela guardada');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP ${res.status}`);
+      }
+      alert('¡Parcela guardada con éxito!');
+      navigate('/panel');
     } catch (err) {
       console.error(err);
-      alert('Error al guardar la parcela');
+      const message = err instanceof Error ? err.message : 'Error de conexión';
+      alert(`Error al guardar la parcela: ${message}`);
     } finally {
       setGuardando(false);
     }
