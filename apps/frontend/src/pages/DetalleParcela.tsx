@@ -60,7 +60,7 @@ export function DetalleParcela() {
         const data: PronosticoResponse = await response.json();
         setPronostico(data);
         setCargando(false);
-      } catch (err) {
+      } catch {
         setError('Error de conexión. Verificá tu conexión a internet.');
         setCargando(false);
       }
