@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapaPoligono } from '../components/MapaPoligono';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 
 export function NuevaParcela() {
   const { token } = useAuth();
@@ -42,9 +42,10 @@ export function NuevaParcela() {
       }
       alert('¡Parcela guardada con éxito!');
       navigate('/panel');
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      alert(`Error al guardar la parcela: ${err.message || 'Error de conexión'}`);
+      const message = err instanceof Error ? err.message : 'Error de conexión';
+      alert(`Error al guardar la parcela: ${message}`);
     } finally {
       setGuardando(false);
     }

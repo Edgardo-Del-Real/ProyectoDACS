@@ -1,23 +1,5 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
-
-export interface UserProfile {
-  id: string;
-  email: string;
-  nombre?: string;
-  rol: 'AGRICULTOR' | 'COOPERATIVA' | 'TECNICO' | string;
-}
-
-export interface AuthContextType {
-  user: UserProfile | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: () => void;
-  logout: () => void;
-  register: () => void;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import React, { useCallback, useMemo, useState } from 'react';
+import { AuthContext, type UserProfile } from './auth-context';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Estado local desacoplado, preparado para ser alimentado por keycloak-js
@@ -28,7 +10,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('dacs_token'));
   const [isLoading] = useState<boolean>(false);
 
-  const login = () => {
+  const login = useCallback(() => {
     // Placeholder para redirección a Keycloak (realm login)
     // En desarrollo local permite probar el estado autenticado
     const mockUser: UserProfile = {
@@ -43,20 +25,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('dacs_user', JSON.stringify(mockUser));
     localStorage.setItem('dacs_token', mockToken);
     localStorage.setItem('token', mockToken);
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('dacs_user');
     localStorage.removeItem('dacs_token');
     localStorage.removeItem('token');
-  };
+  }, []);
 
-  const register = () => {
+  const register = useCallback(() => {
     // Redirección a Keycloak registration flow
     login();
-  };
+  }, [login]);
 
   const value = useMemo(
     () => ({
@@ -68,16 +50,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout,
       register,
     }),
-    [user, token, isLoading]
+    [user, token, isLoading, login, logout, register],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth debe ser utilizado dentro de un AuthProvider');
-  }
-  return context;
 };
