@@ -15,7 +15,12 @@ declare module '@fastify/jwt' {
 }
 
 export async function setupAuth(app: FastifyInstance): Promise<void> {
-  const secret = process.env.JWT_SECRET || 'supersecret_desarrollo_cambiar_en_produccion';
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error(
+      'JWT_SECRET no está configurado. Definilo en el entorno (o en docker-compose.yml) antes de levantar el BFF.',
+    );
+  }
 
   await app.register(fastifyJwt, {
     secret,

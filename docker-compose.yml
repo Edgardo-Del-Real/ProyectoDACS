@@ -43,6 +43,7 @@ services:
       HOST: "0.0.0.0"
       DATABASE_URL: "postgres://dacs:dacs@db:5432/dacs"
       RABBITMQ_URL: "amqp://dacs:dacs@broker:5672"
+      JWT_SECRET: "${JWT_SECRET:-dev-only-jwt-secret-change-me}"
     command: sh -c "npm install --no-audit --no-fund && npm run dev --workspace @proyectodacs/bff"
     depends_on:
       db:
