@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import * as turf from '@turf/turf';
 
@@ -78,11 +79,11 @@ export async function obtenerPronostico(parcelaId: string): Promise<PronosticoRe
       where: { parcelaId },
       create: {
         parcelaId,
-        datos: pronostico as unknown as any,
+        datos: pronostico as unknown as Prisma.InputJsonValue,
         fetchedAt: now,
       },
       update: {
-        datos: pronostico as unknown as any,
+        datos: pronostico as unknown as Prisma.InputJsonValue,
         fetchedAt: now,
       },
     });
