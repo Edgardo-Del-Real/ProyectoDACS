@@ -20,6 +20,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     '/register',
     {
       schema: {
+        tags: ['Auth'],
+        summary: 'Registro de nuevo usuario (US-02)',
+        description: 'Crea un usuario con correo, contraseña (mínimo 8 caracteres) y rol opcional.',
         body: {
           type: 'object',
           required: ['email', 'password'],
@@ -84,6 +87,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     '/login',
     {
       schema: {
+        tags: ['Auth'],
+        summary: 'Inicio de sesión con credenciales (US-03)',
+        description: 'Autentica al usuario y devuelve el token JWT firmado.',
         body: {
           type: 'object',
           required: ['email', 'password'],
@@ -141,6 +147,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/me',
     {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Obtener perfil del usuario autenticado',
+        security: [{ bearerAuth: [] }],
+      },
       preHandler: [app.authenticate],
     },
     async (request, reply) => {

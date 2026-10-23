@@ -7,6 +7,13 @@ export const climaRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { id: string } }>(
     '/:id/clima',
     {
+      schema: {
+        tags: ['Clima'],
+        summary: 'Obtener pronóstico hiperlocal de 7 días (US-05)',
+        description:
+          'Consulta Open-Meteo con TTL de 3 horas en caché para las coordenadas del centroide de la parcela.',
+        security: [{ bearerAuth: [] }],
+      },
       preHandler: [app.authenticate],
     },
     async (request, reply) => {
