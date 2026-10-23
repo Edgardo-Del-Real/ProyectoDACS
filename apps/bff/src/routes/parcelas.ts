@@ -1,16 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { Polygon } from 'geojson';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 
 interface CrearParcelaBody {
   nombre: string;
   poligono: Polygon;
   hectareas: number;
-}
-
-interface Punto {
-  lng: number;
-  lat: number;
 }
 
 /**
@@ -171,7 +167,7 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
         const parcela = await prisma.parcela.create({
           data: {
             nombre,
-            poligono: validacion.data as any,
+            poligono: validacion.data as unknown as Prisma.InputJsonValue,
             hectareas,
             userId,
           },
