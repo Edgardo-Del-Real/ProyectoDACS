@@ -90,14 +90,17 @@ export const DashboardView: React.FC = () => {
       if (data.length > 0) {
         await cargarClimaParcela(data[0].id);
       }
-    } catch (err: any) {
-      setError(err.message || 'Error de conexión con el BFF.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error de conexión con el BFF.';
+      setError(message);
     } finally {
       setCargando(false);
     }
   }, [cargarClimaParcela]);
 
   useEffect(() => {
+    // Carga inicial de datos al montar. El setState del spinner es intencional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     cargarDatos();
   }, [cargarDatos]);
 
