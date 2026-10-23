@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/useAuth';
 
 export const Navbar: React.FC = () => {
-  const { user, isAuthenticated, login, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -75,20 +75,18 @@ export const Navbar: React.FC = () => {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={login}
+                <Link
+                  to="/login"
                   className="px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
                 >
                   Iniciar sesión
-                </button>
-                <button
-                  type="button"
-                  onClick={login}
+                </Link>
+                <Link
+                  to="/registro"
                   className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition"
                 >
                   Registrarse
-                </button>
+                </Link>
               </div>
             )}
           </div>
@@ -153,16 +151,20 @@ export const Navbar: React.FC = () => {
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    login();
-                    setIsMobileMenuOpen(false);
-                  }}
+                <Link
+                  to="/login"
+                  onClick={() => setIsMobileMenuOpen(false)}
                   className="w-full py-2 text-center text-sm font-medium text-emerald-700 bg-emerald-50 rounded-lg"
                 >
                   Iniciar sesión
-                </button>
+                </Link>
+                <Link
+                  to="/registro"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="w-full py-2 text-center text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm"
+                >
+                  Registrarse
+                </Link>
               </div>
             )}
           </div>

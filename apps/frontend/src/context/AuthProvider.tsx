@@ -1,31 +1,79 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { AuthContext, type UserProfile } from './auth-context';
+import {
+  AuthContext,
+  type AuthContextType,
+  type LoginCredentials,
+  type RegisterData,
+  type UserProfile,
+} from './auth-context';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Estado local desacoplado, preparado para ser alimentado por keycloak-js
   const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('dacs_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('dacs_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('dacs_token'));
-  const [isLoading] = useState<boolean>(false);
 
-  const login = useCallback(() => {
-    // Placeholder para redirección a Keycloak (realm login)
-    // En desarrollo local permite probar el estado autenticado
-    const mockUser: UserProfile = {
-      id: 'demo-agricultor-1',
-      email: 'productor@dacs.ar',
-      nombre: 'Productor Demostración',
-      rol: 'AGRICULTOR',
-    };
-    const mockToken = 'mock-jwt-token';
-    setUser(mockUser);
-    setToken(mockToken);
-    localStorage.setItem('dacs_user', JSON.stringify(mockUser));
-    localStorage.setItem('dacs_token', mockToken);
-    localStorage.setItem('token', mockToken);
+  const [token, setToken] = useState<string | null>(
+    () => localStorage.getItem('dacs_token') || localStorage.getItem('token'),
+  );
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const login = useCallback(async ({ email, password }: LoginCredentials): Promise<void> => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Credenciales inválidas');
+      }
+
+      const data = await res.json();
+      const authToken: string = data.token;
+      const authUser: UserProfile = data.user;
+
+      localStorage.setItem('dacs_token', authToken);
+      localStorage.setItem('token', authToken);
+      localStorage.setItem('dacs_user', JSON.stringify(authUser));
+
+      setToken(authToken);
+      setUser(authUser);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  const register = useCallback(
+    async (registerData: RegisterData): Promise<void> => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(registerData),
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Error al registrar el usuario');
+        }
+
+        // Si el registro fue exitoso, iniciamos sesión automáticamente
+        await login({ email: registerData.email, password: registerData.password });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [login],
+  );
 
   const logout = useCallback(() => {
     setUser(null);
@@ -35,16 +83,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('token');
   }, []);
 
-  const register = useCallback(() => {
-    // Redirección a Keycloak registration flow
-    login();
-  }, [login]);
-
-  const value = useMemo(
+  const value = useMemo<AuthContextType>(
     () => ({
       user,
       token,
-      isAuthenticated: !!user,
+      isAuthenticated: Boolean(user && token),
       isLoading,
       login,
       logout,
