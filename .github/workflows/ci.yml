@@ -45,7 +45,7 @@ jobs:
         run: npm run build --workspace apps/frontend
 
   bff:
-    name: BFF — prisma generate, typecheck y validate
+    name: BFF — prisma generate, typecheck, lint y validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -66,6 +66,9 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
+
+      - name: Lint
+        run: npm run lint --workspace apps/bff
 
       # El build del BFF corre `prisma generate` antes de `tsc`, por lo que
       # cubre la generación del cliente + typecheck de una sola vez.
