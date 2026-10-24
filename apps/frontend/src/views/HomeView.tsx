@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 
 export const HomeView: React.FC = () => {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   return (
     <div className="space-y-12">
@@ -28,13 +28,12 @@ export const HomeView: React.FC = () => {
                 Ir a mi Panel de Parcelas ➔
               </Link>
             ) : (
-              <button
-                type="button"
-                onClick={login}
+              <Link
+                to="/login"
                 className="px-6 py-3 rounded-xl bg-white text-emerald-800 font-bold hover:bg-emerald-50 shadow-md transition"
               >
                 Comenzar ahora (Iniciar sesión)
-              </button>
+              </Link>
             )}
             <a
               href="#caracteristicas"
