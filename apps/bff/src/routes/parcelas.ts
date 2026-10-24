@@ -139,6 +139,9 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     {
       preHandler: [app.authenticate],
       schema: {
+        tags: ['Parcelas'],
+        summary: 'Crear nueva parcela delimitada (US-01)',
+        security: [{ bearerAuth: [] }],
         body: {
           type: 'object',
           required: ['nombre', 'poligono', 'hectareas'],
@@ -187,7 +190,14 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/parcelas - Listar parcelas del usuario autenticado
   app.get(
     '/',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Parcelas'],
+        summary: 'Listar parcelas del usuario autenticado',
+        security: [{ bearerAuth: [] }],
+      },
+    },
     async (request) => {
       const userId = request.user.id;
       const parcelas = await prisma.parcela.findMany({
@@ -203,7 +213,14 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/parcelas/:id/campanias - Listar historial ordenado por campaña
   app.get<{ Params: { id: string } }>(
     '/:id/campanias',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Campanias'],
+        summary: 'Listar historial de campañas de una parcela (US-04)',
+        security: [{ bearerAuth: [] }],
+      },
+    },
     async (request, reply) => {
       const userId = request.user.id;
       const parcelaId = request.params.id;
@@ -235,6 +252,9 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     {
       preHandler: [app.authenticate],
       schema: {
+        tags: ['Campanias'],
+        summary: 'Registrar cultivo en una campaña agrícola (US-04)',
+        security: [{ bearerAuth: [] }],
         body: {
           type: 'object',
           required: ['cultivo', 'campania'],
@@ -283,6 +303,11 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     '/:id/campanias/:campaniaId',
     {
       preHandler: [app.authenticate],
+      schema: {
+        tags: ['Campanias'],
+        summary: 'Editar registro histórico de campaña (US-04)',
+        security: [{ bearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const userId = request.user.id;
@@ -328,6 +353,11 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     '/:id/campanias/:campaniaId',
     {
       preHandler: [app.authenticate],
+      schema: {
+        tags: ['Campanias'],
+        summary: 'Eliminar registro histórico de campaña (US-04)',
+        security: [{ bearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const userId = request.user.id;
