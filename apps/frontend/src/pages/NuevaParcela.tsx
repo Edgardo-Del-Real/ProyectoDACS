@@ -6,10 +6,14 @@ import { useAuth } from '../context/useAuth';
 export function NuevaParcela() {
   const { token } = useAuth();
   const navigate = useNavigate();
+  // Debe mantenerse sincronizada con MAX_HECTAREAS_PARCELA en apps/bff/src/routes/parcelas.ts.
+  // El BFF recalcula el área y rechaza con 400 si se supera.
+  const MAX_HECTAREAS_PARCELA = 5_000;
   const [nombre, setNombre] = useState('');
   const [poligono, setPoligono] = useState<GeoJSON.Polygon | null>(null);
   const [hectareas, setHectareas] = useState<number | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const excedeMaximo = hectareas !== null && hectareas > MAX_HECTAREAS_PARCELA;
 
   const handlePolygonChange = useCallback(
     (geojson: GeoJSON.Polygon | null, ha: number | null) => {
@@ -51,7 +55,8 @@ export function NuevaParcela() {
     }
   };
 
-  const puedeGuardar = nombre.trim().length > 0 && poligono !== null && !guardando;
+  const puedeGuardar =
+    nombre.trim().length > 0 && poligono !== null && !guardando && !excedeMaximo;
 
   return (
     <div style={{ padding: '2rem', maxWidth: '960px', margin: '0 auto' }}>
@@ -89,6 +94,24 @@ export function NuevaParcela() {
           <strong>
             {hectareas.toFixed(2)} ha
           </strong>
+        </p>
+      )}
+
+      {excedeMaximo && (
+        <p
+          role="alert"
+          style={{
+            marginTop: '0.5rem',
+            fontSize: '1rem',
+            color: '#b91c1c',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '6px',
+            padding: '0.75rem 1rem',
+          }}
+        >
+          El polígono supera el máximo de {MAX_HECTAREAS_PARCELA.toLocaleString('es-AR')} ha por
+          parcela. Delimitá una parcela más chica o dividí el campo en varias.
         </p>
       )}
 
