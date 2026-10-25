@@ -82,6 +82,14 @@ export function MapaPoligono({ onPolygonChange }: MapaPoligonoProps) {
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
         maxZoom={19}
       />
+      {/* Capa de referencia (limites de provincias/paises + nombres de ciudades)
+          apilada sobre la imagen satelital. El usuario la usa para ubicarse;
+          la base de imagery no cambia. */}
+      <TileLayer
+        attribution="Boundaries &copy; Esri"
+        url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+        maxZoom={19}
+      />
       <GeomanController onPolygonChange={onPolygonChange} />
     </MapContainer>
   );
