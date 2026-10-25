@@ -59,7 +59,8 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: "http://localhost:8090/api"
+      # Base SIN /api: las vistas arman las rutas como `${VITE_API_URL}/api/...`
+      VITE_API_URL: "http://localhost:8090"
     command: sh -c "npm run dev -- --host 0.0.0.0 --port 5173"
     depends_on:
       - bff
