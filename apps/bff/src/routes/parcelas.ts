@@ -1,7 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { Polygon } from 'geojson';
 import type { Prisma } from '@prisma/client';
+import * as turf from '@turf/turf';
 import { prisma } from '../db.js';
+
+/**
+ * Área máxima permitida por parcela (hectáreas). Debe mantenerse sincronizada
+ * con MAX_HECTAREAS_PARCELA en apps/frontend/src/pages/NuevaParcela.tsx.
+ */
+const MAX_HECTAREAS_PARCELA = 5_000;
 
 interface CrearParcelaBody {
   nombre: string;
@@ -155,7 +162,9 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request, reply) => {
       const userId = request.user.id;
-      const { nombre, poligono, hectareas } = request.body;
+      // `hectareas` sigue siendo obligatorio en el body (compatibilidad con el
+      // frontend), pero se ignora: el área se recalcula server-side con turf.
+      const { nombre, poligono } = request.body;
 
       // Validar geometría del polígono
       const validacion = validarPoligono(poligono);
@@ -163,6 +172,22 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(400).send({
           error: 'Geometría inválida',
           message: validacion.error,
+        });
+      }
+
+      // El área se recalcula server-side (geodésico con turf.js): el valor
+      // enviado por el cliente se ignora porque no es confiable.
+      const hectareas = turf.area(validacion.data) / 10_000;
+      if (!Number.isFinite(hectareas) || hectareas <= 0) {
+        return reply.code(400).send({
+          error: 'Geometría inválida',
+          message: 'El polígono no tiene un área válida',
+        });
+      }
+      if (hectareas > MAX_HECTAREAS_PARCELA) {
+        return reply.code(400).send({
+          error: 'Área excedida',
+          message: `El polígono supera el máximo de ${MAX_HECTAREAS_PARCELA.toLocaleString('es-AR')} ha por parcela (ingresó ${Math.round(hectareas).toLocaleString('es-AR')} ha). Delimitá una parcela más chica o dividí el campo.`,
         });
       }
 
