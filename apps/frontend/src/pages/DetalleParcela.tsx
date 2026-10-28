@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import type { Polygon } from 'geojson';
+import { MapaDetalleParcela } from '../components/MapaDetalleParcela';
 
 interface PronosticoDia {
   fecha: string;
@@ -14,6 +16,14 @@ interface PronosticoResponse {
   pronostico: PronosticoDia[];
   stale: boolean;
   fetchedAt: string;
+}
+
+interface ParcelaDetalle {
+  id: string;
+  nombre: string | null;
+  poligono: Polygon;
+  hectareas: number;
+  createdAt: string;
 }
 
 interface Campania {
@@ -39,6 +49,7 @@ const CULTIVOS_COMUNES = [
 
 export function DetalleParcela() {
   const { id } = useParams<{ id: string }>();
+  const [parcela, setParcela] = useState<ParcelaDetalle | null>(null);
   const [pronostico, setPronostico] = useState<PronosticoResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +94,7 @@ export function DetalleParcela() {
   useEffect(() => {
     if (!id) return;
 
-    const obtenerPronostico = async () => {
+    const cargarDatos = async () => {
       try {
         const token = getToken();
         if (!token) {
@@ -92,30 +103,37 @@ export function DetalleParcela() {
           return;
         }
 
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${id}/clima`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
+        // Cargar clima y detalle de la parcela en paralelo
+        const [resClima, resParcela] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${id}/clima`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
 
-        if (!response.ok) {
-          if (response.status === 401) {
+        if (!resClima.ok) {
+          if (resClima.status === 401) {
             setError('Sesión expirada. Por favor, iniciá sesión nuevamente.');
-          } else if (response.status === 404) {
+          } else if (resClima.status === 404) {
             setError('Parcela no encontrada.');
           } else {
-            const data = await response.json();
+            const data = await resClima.json().catch(() => ({}));
             setError(data.message || 'Error al obtener el pronóstico');
           }
           setCargando(false);
           return;
         }
 
-        const data: PronosticoResponse = await response.json();
-        setPronostico(data);
+        const dataClima: PronosticoResponse = await resClima.json();
+        setPronostico(dataClima);
+
+        if (resParcela.ok) {
+          const dataParcela: ParcelaDetalle = await resParcela.json();
+          setParcela(dataParcela);
+        }
+
         setCargando(false);
       } catch {
         setError('Error de conexión. Verificá tu conexión a internet.');
@@ -123,7 +141,7 @@ export function DetalleParcela() {
       }
     };
 
-    obtenerPronostico();
+    cargarDatos();
     // Carga de datos al montar (sincroniza con la API). El setState del spinner es intencional.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     cargarCampanias();
@@ -270,11 +288,18 @@ export function DetalleParcela() {
             </Link>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
-            {pronostico.parcelaNombre || 'Detalle de Parcela'}
+            {parcela?.nombre || pronostico.parcelaNombre || 'Detalle de Parcela'}
           </h1>
-          <p className="text-xs font-mono text-slate-500 mt-1">
-            ID: <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-medium">{pronostico.parcelaId}</span>
-          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+              ID: {pronostico.parcelaId}
+            </span>
+            {parcela && (
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                {parcela.hectareas.toFixed(2)} ha
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -296,6 +321,33 @@ export function DetalleParcela() {
           <div>
             <strong className="font-semibold">Datos climáticos desactualizados:</strong> No se pudo actualizar el pronóstico en tiempo real con Open-Meteo. Mostrando datos cacheados del {new Date(pronostico.fetchedAt).toLocaleString('es-AR')}.
           </div>
+        </div>
+      )}
+
+      {/* --- SECCIÓN 0: MAPA DEL LOTE (P4) --- */}
+      {parcela && parcela.poligono && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <span>🗺️</span> Delimitación Satelital del Lote
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Polígono delimitado y ubicación geográfica para el pronóstico y labores de campo.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span>Superficie: <strong className="text-slate-800">{parcela.hectareas.toFixed(2)} ha</strong></span>
+              <span>•</span>
+              <span>Alta: <strong className="text-slate-800">{new Date(parcela.createdAt).toLocaleDateString('es-AR')}</strong></span>
+            </div>
+          </div>
+
+          <MapaDetalleParcela
+            poligono={parcela.poligono}
+            nombre={parcela.nombre}
+            hectareas={parcela.hectareas}
+          />
         </div>
       )}
 
