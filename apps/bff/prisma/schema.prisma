@@ -76,3 +76,51 @@ model Precio {
   @@unique([cultivo, fecha, fuente])
   @@index([cultivo, fecha])
 }
+
+// Catálogo de cultivos agrícolas argentinos (Fase 2 / US-08 / US-09)
+model Cultivo {
+  id              String          @id @default(cuid())
+  nombre          String          @unique
+  familiaBotanica String          // ej: "Leguminosa", "Gramínea", "Asterácea"
+  cicloDias       Int             // Días promedio del ciclo (ej: 140)
+  tempMinCritica  Float           // Temperatura umbral de helada (°C)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  reglasOrigen    ReglaRotacion[] @relation("CultivoAnterior")
+  reglasDestino   ReglaRotacion[] @relation("CultivoSiguiente")
+
+  @@index([familiaBotanica])
+}
+
+// Reglas de rotación agronómica y efectos sobre el suelo (Fase 2 / US-09)
+model ReglaRotacion {
+  id                  String   @id @default(cuid())
+  cultivoAnteriorId   String
+  cultivoSiguienteId  String
+  aniosEsperaMin      Int      @default(0) // Años de espera recomendados
+  efectoSuelo         String   // Justificación técnica según pautas INTA
+  prioridadSugerencia Int      @default(1) // 1 a 5 para el motor de recomendación
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  cultivoAnterior     Cultivo  @relation("CultivoAnterior", fields: [cultivoAnteriorId], references: [id], onDelete: Cascade)
+  cultivoSiguiente    Cultivo  @relation("CultivoSiguiente", fields: [cultivoSiguienteId], references: [id], onDelete: Cascade)
+
+  @@unique([cultivoAnteriorId, cultivoSiguienteId])
+  @@index([cultivoAnteriorId])
+  @@index([cultivoSiguienteId])
+}
+
+// Parámetros económicos para cálculo de margen bruto y simulación (Fase 2 / US-10)
+model ParametroEconomico {
+  id                String   @id @default(cuid())
+  cultivo           String
+  retencionPct      Float    // Derechos de exportación (%)
+  costoPorHa        Float    // Costo directo estimado en USD/ha
+  fechaVigenteDesde DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([cultivo])
+}
