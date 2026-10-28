@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import type { Polygon } from 'geojson';
+import { MapaDetalleParcela } from '../components/MapaDetalleParcela';
 
 interface PronosticoDia {
   fecha: string;
@@ -14,6 +16,14 @@ interface PronosticoResponse {
   pronostico: PronosticoDia[];
   stale: boolean;
   fetchedAt: string;
+}
+
+interface ParcelaDetalle {
+  id: string;
+  nombre: string | null;
+  poligono: Polygon;
+  hectareas: number;
+  createdAt: string;
 }
 
 interface Campania {
@@ -39,6 +49,7 @@ const CULTIVOS_COMUNES = [
 
 export function DetalleParcela() {
   const { id } = useParams<{ id: string }>();
+  const [parcela, setParcela] = useState<ParcelaDetalle | null>(null);
   const [pronostico, setPronostico] = useState<PronosticoResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +94,7 @@ export function DetalleParcela() {
   useEffect(() => {
     if (!id) return;
 
-    const obtenerPronostico = async () => {
+    const cargarDatos = async () => {
       try {
         const token = getToken();
         if (!token) {
@@ -92,30 +103,37 @@ export function DetalleParcela() {
           return;
         }
 
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${id}/clima`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
+        // Cargar clima y detalle de la parcela en paralelo
+        const [resClima, resParcela] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${id}/clima`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
 
-        if (!response.ok) {
-          if (response.status === 401) {
+        if (!resClima.ok) {
+          if (resClima.status === 401) {
             setError('Sesión expirada. Por favor, iniciá sesión nuevamente.');
-          } else if (response.status === 404) {
+          } else if (resClima.status === 404) {
             setError('Parcela no encontrada.');
           } else {
-            const data = await response.json();
+            const data = await resClima.json().catch(() => ({}));
             setError(data.message || 'Error al obtener el pronóstico');
           }
           setCargando(false);
           return;
         }
 
-        const data: PronosticoResponse = await response.json();
-        setPronostico(data);
+        const dataClima: PronosticoResponse = await resClima.json();
+        setPronostico(dataClima);
+
+        if (resParcela.ok) {
+          const dataParcela: ParcelaDetalle = await resParcela.json();
+          setParcela(dataParcela);
+        }
+
         setCargando(false);
       } catch {
         setError('Error de conexión. Verificá tu conexión a internet.');
@@ -123,7 +141,7 @@ export function DetalleParcela() {
       }
     };
 
-    obtenerPronostico();
+    cargarDatos();
     // Carga de datos al montar (sincroniza con la API). El setState del spinner es intencional.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     cargarCampanias();
@@ -205,103 +223,169 @@ export function DetalleParcela() {
 
   if (cargando) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '960px', margin: '0 auto' }}>
-        <p>Cargando datos de la parcela...</p>
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center space-y-3">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-emerald-600"></div>
+          <p className="text-slate-600 text-sm font-medium">Cargando datos de la parcela...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '960px', margin: '0 auto' }}>
-        <h1>Error</h1>
-        <p style={{ color: 'red' }}>{error}</p>
-        <Link to="/panel">← Volver al panel</Link>
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-4">
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-red-200 shadow-sm space-y-4">
+          <div className="flex items-center gap-3 text-red-600">
+            <span className="text-2xl">⚠️</span>
+            <h1 className="text-xl font-bold">Error al cargar la parcela</h1>
+          </div>
+          <p className="text-slate-700 text-sm bg-red-50 p-4 rounded-xl border border-red-100">
+            {error}
+          </p>
+          <div>
+            <Link
+              to="/panel"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-sm transition"
+            >
+              ← Volver al panel
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!pronostico) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '960px', margin: '0 auto' }}>
-        <p>No se encontró la parcela solicitada.</p>
-        <Link to="/panel">← Volver al panel</Link>
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-4">
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm text-center space-y-4">
+          <p className="text-slate-600 text-base font-medium">No se encontró la parcela solicitada.</p>
+          <div>
+            <Link
+              to="/panel"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-sm transition"
+            >
+              ← Volver al panel
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '960px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+    <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-6">
+      {/* Header de Parcela */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
-          <h1 style={{ margin: 0 }}>
-            {pronostico.parcelaNombre || 'Detalle de Parcela'}
+          <div className="flex items-center gap-2 mb-1">
+            <Link
+              to="/panel"
+              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition inline-flex items-center gap-1"
+            >
+              ← Volver al panel
+            </Link>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
+            {parcela?.nombre || pronostico.parcelaNombre || 'Detalle de Parcela'}
           </h1>
-          <p style={{ color: '#666', fontSize: '0.9rem', margin: '0.25rem 0 0 0' }}>
-            ID: {pronostico.parcelaId}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+              ID: {pronostico.parcelaId}
+            </span>
+            {parcela && (
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                {parcela.hectareas.toFixed(2)} ha
+              </span>
+            )}
+          </div>
         </div>
-        <Link to="/panel" style={{ textDecoration: 'none', color: '#16a34a', fontWeight: 600 }}>
-          ← Volver al panel
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/panel"
+            className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl text-center transition"
+          >
+            Ver todas las parcelas
+          </Link>
+        </div>
       </div>
 
+      {/* Alerta de datos desactualizados */}
       {pronostico.stale && (
         <div
-          style={{
-            backgroundColor: '#fff3cd',
-            border: '1px solid #ffc107',
-            padding: '1rem',
-            borderRadius: '6px',
-            marginBottom: '1.5rem',
-          }}
+          role="alert"
+          className="rounded-xl p-4 bg-amber-50 border border-amber-200 text-amber-900 text-sm flex items-start gap-3"
         >
-          ⚠️ <strong>Datos desactualizados:</strong> No se pudo actualizar el pronóstico en tiempo real.
-          Mostrando datos del {new Date(pronostico.fetchedAt).toLocaleString('es-AR')}.
+          <span className="text-lg">⚠️</span>
+          <div>
+            <strong className="font-semibold">Datos climáticos desactualizados:</strong> No se pudo actualizar el pronóstico en tiempo real con Open-Meteo. Mostrando datos cacheados del {new Date(pronostico.fetchedAt).toLocaleString('es-AR')}.
+          </div>
+        </div>
+      )}
+
+      {/* --- SECCIÓN 0: MAPA DEL LOTE (P4) --- */}
+      {parcela && parcela.poligono && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <span>🗺️</span> Delimitación Satelital del Lote
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Polígono delimitado y ubicación geográfica para el pronóstico y labores de campo.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span>Superficie: <strong className="text-slate-800">{parcela.hectareas.toFixed(2)} ha</strong></span>
+              <span>•</span>
+              <span>Alta: <strong className="text-slate-800">{new Date(parcela.createdAt).toLocaleDateString('es-AR')}</strong></span>
+            </div>
+          </div>
+
+          <MapaDetalleParcela
+            poligono={parcela.poligono}
+            nombre={parcela.nombre}
+            hectareas={parcela.hectareas}
+          />
         </div>
       )}
 
       {/* --- SECCIÓN 1: PRONÓSTICO DEL CLIMA (US-05) --- */}
-      <div style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem' }}>☀️ Pronóstico a 7 días (Open-Meteo)</h2>
-          <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <span>☀️</span> Pronóstico a 7 días (Open-Meteo)
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Temperaturas extremas y precipitaciones diarias previstas para el lote.
+            </p>
+          </div>
+          <span className="text-xs font-medium text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200 self-start sm:self-auto">
             Actualizado: {new Date(pronostico.fetchedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-            gap: '0.75rem',
-            marginTop: '1rem',
-          }}
-        >
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 pt-2">
           {pronostico.pronostico.map((dia) => (
             <div
               key={dia.fecha}
-              style={{
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '0.75rem',
-                backgroundColor: '#f8fafc',
-                textAlign: 'center',
-              }}
+              className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-emerald-200 hover:shadow-xs transition text-center space-y-1.5"
             >
-              <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem', textTransform: 'capitalize' }}>
+              <div className="text-xs font-bold text-slate-800 capitalize tracking-tight">
                 {new Date(dia.fecha).toLocaleDateString('es-AR', {
                   weekday: 'short',
                   day: 'numeric',
                 })}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#dc2626' }}>
-                Máx: <strong>{dia.tempMax}°C</strong>
+              <div className="text-xs text-red-600 font-semibold">
+                Máx: <span className="font-bold">{dia.tempMax}°C</span>
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#2563eb', margin: '0.2rem 0' }}>
-                Mín: <strong>{dia.tempMin}°C</strong>
+              <div className="text-xs text-blue-600 font-semibold">
+                Mín: <span className="font-bold">{dia.tempMin}°C</span>
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#475569' }}>
+              <div className="text-xs text-slate-600 font-medium pt-1 border-t border-slate-200/60">
                 🌧️ {dia.precipitacion} mm
               </div>
             </div>
@@ -310,27 +394,24 @@ export function DetalleParcela() {
       </div>
 
       {/* --- SECCIÓN 2: HISTORIAL DE CULTIVOS POR CAMPAÑA (US-04) --- */}
-      <div style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>🌱 Historial de Cultivos por Campaña</h2>
-            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-              Base agronómica utilizada para calcular las recomendaciones de rotación (US-09).
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <span>🌱</span> Historial de Cultivos por Campaña
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Base agronómica utilizada para calcular las recomendaciones de rotación plurianual (US-09).
             </p>
           </div>
           <button
             type="button"
             onClick={() => setMostrarFormCampania(!mostrarFormCampania)}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: mostrarFormCampania ? '#e2e8f0' : '#16a34a',
-              color: mostrarFormCampania ? '#334155' : '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-            }}
+            className={`w-full sm:w-auto px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition ${
+              mostrarFormCampania
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+            }`}
           >
             {mostrarFormCampania ? 'Cancelar' : '+ Registrar campaña'}
           </button>
@@ -340,26 +421,24 @@ export function DetalleParcela() {
         {mostrarFormCampania && (
           <form
             onSubmit={handleGuardarCampania}
-            style={{
-              backgroundColor: '#f8fafc',
-              border: '1px solid #cbd5e1',
-              borderRadius: '8px',
-              padding: '1.25rem',
-              marginBottom: '1.5rem',
-            }}
+            className="bg-slate-50 border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4"
           >
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', color: '#1e293b' }}>
-              Nuevo Registro de Campaña
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-bold text-slate-900">
+                Nuevo Registro de Campaña
+              </h3>
+              <span className="text-xs text-slate-500">* Campos obligatorios</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Cultivo sembrado *
                 </label>
                 <select
                   value={cultivo}
                   onChange={(e) => setCultivo(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition"
                 >
                   {CULTIVOS_COMUNES.map((c) => (
                     <option key={c} value={c}>{c}</option>
@@ -368,7 +447,7 @@ export function DetalleParcela() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Campaña agrícola * (ej: 2024/2025)
                 </label>
                 <input
@@ -377,12 +456,12 @@ export function DetalleParcela() {
                   placeholder="Ej: 2024/2025"
                   value={campania}
                   onChange={(e) => setCampania(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition"
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Rinde obtenido (qq/ha o tn/ha, opcional)
                 </label>
                 <input
@@ -391,93 +470,95 @@ export function DetalleParcela() {
                   placeholder="Ej: 32.5"
                   value={rindeReal}
                   onChange={(e) => setRindeReal(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition"
                 />
               </div>
             </div>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>
-                Observaciones (opcional)
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Observaciones agronómicas (opcional)
               </label>
               <input
                 type="text"
                 placeholder="Ej: Sufrida por sequía temprana, fertilizado con fósforo"
                 value={observaciones}
                 onChange={(e) => setObservaciones(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={guardandoCampania}
-              style={{
-                padding: '0.5rem 1.25rem',
-                backgroundColor: '#16a34a',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: 600,
-                cursor: guardandoCampania ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {guardandoCampania ? 'Guardando...' : 'Guardar en historial'}
-            </button>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setMostrarFormCampania(false)}
+                className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-800 transition"
+              >
+                Cerrar
+              </button>
+              <button
+                type="submit"
+                disabled={guardandoCampania}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm transition flex items-center gap-2"
+              >
+                {guardandoCampania ? 'Guardando...' : 'Guardar en historial'}
+              </button>
+            </div>
           </form>
         )}
 
-        {/* Tabla o Lista de Campañas */}
+        {/* Tabla / Lista de Campañas */}
         {cargandoCampanias ? (
-          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Cargando historial...</p>
+          <div className="py-8 text-center text-slate-500 text-sm">
+            <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-emerald-600 mr-2 align-middle"></div>
+            Cargando historial de campañas...
+          </div>
         ) : campanias.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2rem 1rem', border: '2px dashed #e2e8f0', borderRadius: '8px', color: '#64748b' }}>
-            <p style={{ margin: 0, fontWeight: 500 }}>No hay campañas registradas aún en esta parcela.</p>
-            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem' }}>
-              Registrá el último cultivo sembrado para poder recibir sugerencias de rotación.
+          <div className="text-center py-10 px-4 border-2 border-dashed border-slate-200 rounded-2xl space-y-2">
+            <span className="text-3xl block">🌾</span>
+            <p className="font-semibold text-slate-700 text-sm">No hay campañas registradas aún en esta parcela</p>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Registrá el último cultivo sembrado para que el sistema pueda evaluar la historia del lote y sugerir rotaciones agronómicas óptimas.
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Campaña</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Cultivo</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Rendimiento</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Notas</th>
-                  <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>Acción</th>
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Campaña</th>
+                  <th className="px-4 py-3 font-semibold">Cultivo</th>
+                  <th className="px-4 py-3 font-semibold">Rendimiento</th>
+                  <th className="px-4 py-3 font-semibold">Notas</th>
+                  <th className="px-4 py-3 font-semibold text-right">Acción</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {campanias.map((c) => (
-                  <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '0.75rem 0.5rem', fontWeight: 600, color: '#0f172a' }}>
+                  <tr key={c.id} className="hover:bg-slate-50/60 transition">
+                    <td className="px-4 py-3.5 font-bold text-slate-900 whitespace-nowrap">
                       {c.campania}
                     </td>
-                    <td style={{ padding: '0.75rem 0.5rem' }}>
-                      <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 500, fontSize: '0.85rem' }}>
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                         {c.cultivo}
                       </span>
                     </td>
-                    <td style={{ padding: '0.75rem 0.5rem', color: '#334155' }}>
-                      {c.rindeReal !== null ? `${c.rindeReal} qq/ha` : '-'}
+                    <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">
+                      {c.rindeReal !== null ? (
+                        <span className="font-semibold text-slate-900">{c.rindeReal} <span className="text-xs text-slate-500 font-normal">qq/ha</span></span>
+                      ) : (
+                        <span className="text-slate-400 italic">-</span>
+                      )}
                     </td>
-                    <td style={{ padding: '0.75rem 0.5rem', color: '#64748b', fontSize: '0.85rem' }}>
-                      {c.observaciones || '-'}
+                    <td className="px-4 py-3.5 text-slate-600 text-xs max-w-xs truncate">
+                      {c.observaciones || <span className="text-slate-400 italic">Sin observaciones</span>}
                     </td>
-                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
+                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
                       <button
                         type="button"
                         onClick={() => handleEliminarCampania(c.id)}
-                        style={{
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          color: '#ef4444',
-                          cursor: 'pointer',
-                          fontSize: '0.8rem',
-                          fontWeight: 500,
-                        }}
+                        className="text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-1 rounded-lg transition"
                       >
                         Eliminar
                       </button>
