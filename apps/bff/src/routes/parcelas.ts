@@ -233,6 +233,125 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // GET /api/parcelas/:id - Obtener detalle completo de una parcela por ID (P4)
+  app.get<{ Params: { id: string } }>(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Parcelas'],
+        summary: 'Obtener detalle de una parcela por ID con su polígono GeoJSON (P4)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id } = request.params;
+
+      const parcela = await prisma.parcela.findFirst({
+        where: { id, userId },
+      });
+
+      if (!parcela) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      return parcela;
+    },
+  );
+
+  // PUT /api/parcelas/:id - Actualizar nombre de una parcela (US-01 / E2)
+  app.put<{ Params: { id: string }; Body: { nombre: string } }>(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Parcelas'],
+        summary: 'Actualizar nombre de una parcela (US-01 / E2)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['nombre'],
+          properties: {
+            nombre: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id } = request.params;
+      const { nombre } = request.body;
+
+      const parcelaExistente = await prisma.parcela.findFirst({
+        where: { id, userId },
+      });
+
+      if (!parcelaExistente) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      const parcelaActualizada = await prisma.parcela.update({
+        where: { id },
+        data: { nombre: nombre.trim() },
+      });
+
+      return reply.code(200).send(parcelaActualizada);
+    },
+  );
+
+  // DELETE /api/parcelas/:id - Eliminar una parcela y sus datos asociados (US-01 / E2)
+  app.delete<{ Params: { id: string } }>(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Parcelas'],
+        summary: 'Eliminar una parcela por ID (y sus campañas/clima en cascada)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id } = request.params;
+
+      const parcelaExistente = await prisma.parcela.findFirst({
+        where: { id, userId },
+      });
+
+      if (!parcelaExistente) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      await prisma.parcela.delete({
+        where: { id },
+      });
+
+      return reply.code(200).send({ message: 'Parcela eliminada correctamente' });
+    },
+  );
+
   // --- US-04: Historial de Campañas de la Parcela ---
 
   // GET /api/parcelas/:id/campanias - Listar historial ordenado por campaña

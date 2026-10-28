@@ -98,6 +98,34 @@ export const DashboardView: React.FC = () => {
     }
   }, [cargarClimaParcela]);
 
+  const handleEliminarParcela = async (parcelaId: string, nombre: string | null) => {
+    const confirmacion = confirm(
+      `¿Estás seguro de que deseás eliminar la parcela "${nombre || 'esta parcela'}"?\n\nEsta acción no se puede deshacer y borrará también el historial de campañas registrado en el lote.`,
+    );
+    if (!confirmacion) return;
+
+    const token = getToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${parcelaId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        throw new Error('Error al eliminar');
+      }
+
+      setParcelas((prev) => prev.filter((p) => p.id !== parcelaId));
+      if (climaPrincipal?.parcelaId === parcelaId) {
+        setClimaPrincipal(null);
+      }
+    } catch {
+      alert('No se pudo eliminar la parcela');
+    }
+  };
+
   useEffect(() => {
     // Carga inicial de datos al montar. El setState del spinner es intencional.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -198,8 +226,16 @@ export const DashboardView: React.FC = () => {
                         to={`/parcelas/${p.id}`}
                         className="px-3.5 py-2 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-400 text-emerald-700 text-xs font-semibold rounded-lg transition inline-flex items-center gap-1 shadow-sm"
                       >
-                        Ver Clima y Campañas ➔
+                        Ver Detalle ➔
                       </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleEliminarParcela(p.id, p.nombre)}
+                        title="Eliminar parcela"
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition text-xs font-semibold"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   </div>
                 ))}
