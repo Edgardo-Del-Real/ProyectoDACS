@@ -2,23 +2,21 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 
-interface NominatimResult {
-  place_id: number;
-  lat: string;
-  lon: string;
-  display_name: string;
-  name?: string;
-  address?: {
-    city?: string;
-    town?: string;
-    village?: string;
-    municipality?: string;
-    state?: string;
-  };
+interface GeorefLocalidad {
+  id: string;
+  nombre: string;
+  departamento_nombre?: string | null;
+  provincia_nombre?: string | null;
+  centroide_lat: number;
+  centroide_lon: number;
+}
+
+interface GeorefResponse {
+  localidades: GeorefLocalidad[];
 }
 
 export interface LocalidadItem {
-  id: number;
+  id: string;
   nombre: string;
   detalle: string;
   lat: number;
@@ -29,6 +27,7 @@ export const BuscadorLocalidades: React.FC = () => {
   const map = useMap();
   const containerRef = useRef<HTMLDivElement>(null);
   const activeMarkerRef = useRef<L.Marker | null>(null);
+  const omitirBusquedaRef = useRef(false);
 
   const [query, setQuery] = useState('');
   const [resultados, setResultados] = useState<LocalidadItem[]>([]);
@@ -71,7 +70,7 @@ export const BuscadorLocalidades: React.FC = () => {
 
   const handleQueryChange = (val: string) => {
     setQuery(val);
-    if (val.trim().length < 3) {
+    if (val.trim().length < 2) {
       setResultados([]);
       setAbierto(false);
       setError(null);
@@ -79,10 +78,15 @@ export const BuscadorLocalidades: React.FC = () => {
     }
   };
 
-  // Búsqueda con debounce hacia Nominatim OpenStreetMap
+  // Búsqueda con debounce hacia la API Georef Argentina (IGN / datos.gob.ar)
   useEffect(() => {
+    if (omitirBusquedaRef.current) {
+      omitirBusquedaRef.current = false;
+      return;
+    }
+
     const termino = query.trim();
-    if (termino.length < 3) {
+    if (termino.length < 2) {
       return;
     }
 
@@ -92,41 +96,39 @@ export const BuscadorLocalidades: React.FC = () => {
       setCargando(true);
       setError(null);
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        const url = `https://apis.datos.gob.ar/georef/api/localidades?nombre=${encodeURIComponent(
           termino,
-        )}&countrycodes=ar&limit=5&addressdetails=1`;
+        )}&max=6&aplanar=true`;
 
         const res = await fetch(url, {
           signal: abortController.signal,
-          headers: {
-            // Nominatim requiere User-Agent descriptivo
-            'Accept-Language': 'es-AR,es',
-          },
         });
 
         if (!res.ok) {
           throw new Error('Servicio de geocodificación no disponible');
         }
 
-        const data: NominatimResult[] = await res.json();
-        const parseados: LocalidadItem[] = data.map((item) => {
-          const parts = item.display_name.split(',').map((p) => p.trim());
-          const nombre =
-            item.name ||
-            item.address?.city ||
-            item.address?.town ||
-            item.address?.village ||
-            parts[0];
-          const detalle = parts.slice(1, 4).join(', ');
+        const data: GeorefResponse = await res.json();
+        const parseados: LocalidadItem[] = (data.localidades ?? [])
+          .filter(
+            (item) =>
+              typeof item.centroide_lat === 'number' &&
+              typeof item.centroide_lon === 'number',
+          )
+          .map((item) => {
+            const partesDetalle = [
+              item.departamento_nombre ? `Dto. ${item.departamento_nombre}` : null,
+              item.provincia_nombre || null,
+            ].filter(Boolean);
 
-          return {
-            id: item.place_id,
-            nombre,
-            detalle,
-            lat: parseFloat(item.lat),
-            lon: parseFloat(item.lon),
-          };
-        });
+            return {
+              id: item.id,
+              nombre: item.nombre,
+              detalle: partesDetalle.join(', ') || 'Argentina',
+              lat: item.centroide_lat,
+              lon: item.centroide_lon,
+            };
+          });
 
         setResultados(parseados);
         setAbierto(true);
@@ -137,7 +139,7 @@ export const BuscadorLocalidades: React.FC = () => {
       } finally {
         setCargando(false);
       }
-    }, 400);
+    }, 250);
 
     return () => {
       clearTimeout(timer);
@@ -147,6 +149,7 @@ export const BuscadorLocalidades: React.FC = () => {
 
   const seleccionarLocalidad = useCallback(
     (item: LocalidadItem) => {
+      omitirBusquedaRef.current = true;
       setAbierto(false);
       setQuery(item.nombre);
 
@@ -252,7 +255,7 @@ export const BuscadorLocalidades: React.FC = () => {
             {error ? (
               <div className="p-3 text-xs text-red-600 text-center">{error}</div>
             ) : resultados.length === 0 ? (
-              query.trim().length >= 3 &&
+              query.trim().length >= 2 &&
               !cargando && (
                 <div className="p-3 text-xs text-slate-500 text-center">
                   No se encontraron localidades con ese nombre.
