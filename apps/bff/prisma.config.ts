@@ -5,4 +5,8 @@ export default defineConfig({
   datasource: {
     url: process.env.DATABASE_URL ?? 'postgres://dacs:dacs@localhost:5432/dacs',
   },
+  migrations: {
+    path: 'prisma/migrations',
+    seed: 'tsx prisma/seed.ts',
+  },
 });
