@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import * as turf from '@turf/turf';
+import { BuscadorLocalidades } from './BuscadorLocalidades';
 
 interface MapaPoligonoProps {
   onPolygonChange: (
@@ -91,6 +92,7 @@ export function MapaPoligono({ onPolygonChange }: MapaPoligonoProps) {
         maxZoom={19}
       />
       <GeomanController onPolygonChange={onPolygonChange} />
+      <BuscadorLocalidades />
     </MapContainer>
   );
 }

@@ -117,7 +117,7 @@ export function NuevaParcela() {
           <div className="space-y-1">
             <p className="font-semibold text-emerald-950">Cómo dibujar el lote:</p>
             <p className="text-xs sm:text-sm text-emerald-800">
-              Usá la herramienta de dibujo (ícono de polígono arriba a la izquierda del mapa) y hacé clic en cada vértice del campo para cerrar el lote.
+              Podés buscar tu ciudad o pueblo con el buscador arriba a la derecha del mapa y luego usar la herramienta de dibujo (ícono de polígono arriba a la izquierda) haciendo clic en cada vértice del campo para cerrar el lote.
             </p>
           </div>
         </div>
