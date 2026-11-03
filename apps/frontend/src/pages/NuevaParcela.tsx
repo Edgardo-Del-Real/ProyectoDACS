@@ -82,8 +82,8 @@ export function NuevaParcela() {
       </label>
 
       <p style={{ marginBottom: '0.5rem', color: '#555' }}>
-        Dibujá el polígono de tu campo usando la herramienta de dibujo (ícono de
-        polígono arriba a la izquierda del mapa).
+        Podés buscar tu ciudad o pueblo con el buscador arriba a la derecha del mapa
+        y luego dibujar el contorno de tu lote con la herramienta de polígono (ícono arriba a la izquierda).
       </p>
 
       <MapaPoligono onPolygonChange={handlePolygonChange} />
