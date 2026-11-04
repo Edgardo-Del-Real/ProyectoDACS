@@ -1,8 +1,9 @@
 name: CI
 
 # Criterio de diseño:
-# 1. Gateamos sobre lo que de verdad valida el código hoy (typecheck + build + validate).
-#    No inventamos un job de "tests" que no existen: se agrega cuando haya runner.
+# 1. Gateamos sobre lo que de verdad valida el código hoy (typecheck + build + validate + tests).
+#    Los tests del BFF corren con el runner nativo de Node (`node --test`) y el loader de tsx:
+#    no hace falta ninguna dependencia extra.
 # 2. Install determinístico: npm ci contra package-lock.json (nada de npm install).
 # 3. Un job por workspace para que una falla apunte directo al módulo que la causó.
 # 4. Node 24 fijado a propósito: coincide con la imagen node:24 de docker-compose.
@@ -74,6 +75,11 @@ jobs:
       # cubre la generación del cliente + typecheck de una sola vez.
       - name: Build (prisma generate + tsc)
         run: npm run build --workspace apps/bff
+
+      # Runner nativo de Node con el loader de tsx: sin dependencias extra.
+      # Los tests no tocan la base, así que no hace falta un servicio de Postgres.
+      - name: Tests
+        run: npm run test --workspace apps/bff
 
       # No conecta a la base: valida la sintaxis y coherencia del schema.
       - name: Validar schema de Prisma
