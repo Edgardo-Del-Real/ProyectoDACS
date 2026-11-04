@@ -5,6 +5,7 @@ import { HomeView } from './views/HomeView';
 import { DashboardView } from './views/DashboardView';
 import { LoginView } from './views/LoginView';
 import { RegistroView } from './views/RegistroView';
+import { MercadoView } from './views/MercadoView';
 import { NuevaParcela } from './pages/NuevaParcela';
 import { DetalleParcela } from './pages/DetalleParcela';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -25,6 +26,14 @@ export const AppRouter: React.FC = () => {
             element={
               <ProtectedRoute>
                 <DashboardView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mercado"
+            element={
+              <ProtectedRoute>
+                <MercadoView />
               </ProtectedRoute>
             }
           />

@@ -68,13 +68,16 @@ model PronosticoClima {
 model Precio {
   id        String   @id @default(cuid())
   cultivo   String
+  posicion  String   @default("DISPONIBLE") // ej: "DISPONIBLE", "MAY25", "JUL25", "NOV25"
   fecha     DateTime @db.Date
-  fuente    String
-  valor     Float
+  fuente    String   // ej: "Matba Rofex", "Bolsa de Cereales"
+  valor     Float    // Valor de ajuste o cotización en USD/tn
+  moneda    String   @default("USD")
   createdAt DateTime @default(now())
 
-  @@unique([cultivo, fecha, fuente])
+  @@unique([cultivo, posicion, fecha, fuente])
   @@index([cultivo, fecha])
+  @@index([cultivo, posicion])
 }
 
 // Catálogo de cultivos agrícolas argentinos (Fase 2 / US-08 / US-09)

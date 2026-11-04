@@ -360,6 +360,68 @@ export async function main() {
     parametrosCargados++;
   }
   console.log(`✅ ${parametrosCargados} parámetros económicos cargados.`);
+
+  // 4. Cargar cotizaciones y futuros de mercado (US-07)
+  const cotizacionesSeed = [
+    // Soja
+    { cultivo: 'Soja', posicion: 'DISPONIBLE', valor: 295.0 },
+    { cultivo: 'Soja', posicion: 'NOV24', valor: 300.0 },
+    { cultivo: 'Soja', posicion: 'ENE25', valor: 302.5 },
+    { cultivo: 'Soja', posicion: 'MAY25', valor: 288.0 },
+    { cultivo: 'Soja', posicion: 'JUL25', valor: 292.0 },
+    { cultivo: 'Soja', posicion: 'NOV25', valor: 296.5 },
+    // Maíz
+    { cultivo: 'Maíz', posicion: 'DISPONIBLE', valor: 180.0 },
+    { cultivo: 'Maíz', posicion: 'DIC24', valor: 182.0 },
+    { cultivo: 'Maíz', posicion: 'ABR25', valor: 178.0 },
+    { cultivo: 'Maíz', posicion: 'JUL25', valor: 172.0 },
+    { cultivo: 'Maíz', posicion: 'SEP25', valor: 175.0 },
+    // Trigo
+    { cultivo: 'Trigo', posicion: 'DISPONIBLE', valor: 215.0 },
+    { cultivo: 'Trigo', posicion: 'DIC24', valor: 208.0 },
+    { cultivo: 'Trigo', posicion: 'ENE25', valor: 210.5 },
+    { cultivo: 'Trigo', posicion: 'MAR25', valor: 214.0 },
+    { cultivo: 'Trigo', posicion: 'JUL25', valor: 220.0 },
+    // Girasol
+    { cultivo: 'Girasol', posicion: 'DISPONIBLE', valor: 320.0 },
+    { cultivo: 'Girasol', posicion: 'DIC24', valor: 322.0 },
+    { cultivo: 'Girasol', posicion: 'MAR25', valor: 315.0 },
+    { cultivo: 'Girasol', posicion: 'MAY25', valor: 318.0 },
+    // Sorgo
+    { cultivo: 'Sorgo', posicion: 'DISPONIBLE', valor: 165.0 },
+    { cultivo: 'Sorgo', posicion: 'ABR25', valor: 162.0 },
+    // Cebada
+    { cultivo: 'Cebada', posicion: 'DISPONIBLE', valor: 195.0 },
+    { cultivo: 'Cebada', posicion: 'DIC24', valor: 192.0 },
+  ];
+
+  let preciosCargados = 0;
+  const hoy = new Date();
+  for (const c of cotizacionesSeed) {
+    await prisma.precio.upsert({
+      where: {
+        cultivo_posicion_fecha_fuente: {
+          cultivo: c.cultivo,
+          posicion: c.posicion,
+          fecha: hoy,
+          fuente: 'Matba Rofex',
+        },
+      },
+      update: {
+        valor: c.valor,
+      },
+      create: {
+        cultivo: c.cultivo,
+        posicion: c.posicion,
+        fecha: hoy,
+        fuente: 'Matba Rofex',
+        valor: c.valor,
+        moneda: 'USD',
+      },
+    });
+    preciosCargados++;
+  }
+  console.log(`✅ ${preciosCargados} cotizaciones y futuros de mercado cargados.`);
   console.log('🌾 Seed completado con éxito.');
 }
 
