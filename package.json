@@ -12,7 +12,8 @@
   "scripts": {
     "dev": "npm run dev --workspace apps/frontend",
     "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
     "prisma": "^7.10.0"
