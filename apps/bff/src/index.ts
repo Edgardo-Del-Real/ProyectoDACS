@@ -5,6 +5,7 @@ import { setupAuth } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { parcelasRoutes } from './routes/parcelas.js';
 import { climaRoutes } from './routes/clima.js';
+import { rotacionRoutes } from './routes/rotacion.js';
 import { healthRoutes } from './routes/health.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -61,6 +62,9 @@ await app.register(parcelasRoutes, { prefix: '/api/parcelas' });
 
 // Rutas de clima
 await app.register(climaRoutes, { prefix: '/api/parcelas' });
+
+// Rutas de plan de rotación plurianual (US-09)
+await app.register(rotacionRoutes, { prefix: '/api/parcelas' });
 
 try {
   await app.listen({ port: PORT, host: HOST });
