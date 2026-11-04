@@ -1,37 +1,50 @@
 import { prisma } from '../db.js';
-import { CircuitBreaker, NonRetryableError } from '../utils/circuit-breaker.js';
+import { obtenerPreciosBolsa } from './bolsaCereales.js';
+import {
+  CULTIVOS_MERCADO_VALIDOS,
+  MercadoClientError,
+  normalizarCultivoMercado,
+  type CultivoMercado,
+} from './mercadoCatalogo.js';
+import {
+  calcularMetricasTendencia,
+  claveOrdenPosicion,
+  generarDescripcionPosicion,
+  type SerieHistoricaPunto,
+} from './mercadoMetricas.js';
 
-export class MercadoClientError extends NonRetryableError {
-  constructor(message: string) {
-    super(`Error en consulta de mercado: ${message}`);
-    this.name = 'MercadoClientError';
-  }
-}
+export {
+  CULTIVOS_MERCADO_VALIDOS,
+  MercadoClientError,
+  normalizarCultivoMercado,
+  generarDescripcionPosicion,
+  calcularMetricasTendencia,
+};
+export type { CultivoMercado, SerieHistoricaPunto };
 
-/**
- * Circuit breaker para proteger las llamadas salientes a Matba Rofex (RNF-10).
- * Si falla 3 veces consecutivas, se abre durante 30s evitando bloqueos en el BFF.
- */
-export const mercadoBreaker = new CircuitBreaker({
-  name: 'Matba-Rofex',
-  failureThreshold: 3,
-  resetTimeoutMs: 30_000,
-  onStateChange: ({ from, to, failures }) => {
-    console.warn(
-      `[circuit-breaker] Matba-Rofex: ${from} -> ${to} (fallos consecutivos: ${failures})`,
-    );
-  },
-});
+/** Fuente única de los precios: precios oficiales FOB de la Bolsa de Cereales. */
+export const FUENTE_BOLSA = 'Bolsa de Cereales de Buenos Aires (FOB Ley 21.453)';
+
+/** El spot FOB se guarda como una posición más, para no tener dos modelos. */
+const POSICION_SPOT = 'DISPONIBLE';
+
+/** Pasado este tiempo el dato se considera desactualizado para la UI. */
+const ANTIGUEDAD_MAXIMA_MS = 24 * 60 * 60 * 1000;
+
+/** Se usa en la advertencia cuando todavía no corrió el worker. */
+export const COMANDO_SINCRONIZACION = 'npm run sync:mercado';
+
+const VENTANA_HISTORICO_MAX_DIAS = 365;
 
 export interface CotizacionFuturo {
   id?: string;
   cultivo: string;
   posicion: string;
   descripcionPosicion: string;
-  fecha: string; // YYYY-MM-DD
+  fecha: string;
   fuente: string;
-  valor: number; // USD/tn
-  moneda: string;
+  valor: number;
+  /** Variación porcentual contra la fecha anterior disponible, no contra una fórmula. */
   variacionDiaPct: number;
 }
 
@@ -41,15 +54,11 @@ export interface MercadoResumenResponse {
   cotizaciones: CotizacionFuturo[];
   spotActual: number | null;
   futuroCercano: CotizacionFuturo | null;
-  ultimaActualizacion: string;
+  ultimaActualizacion: string | null;
   stale: boolean;
   fuente: string;
-}
-
-export interface SerieHistoricaPunto {
-  fecha: string;
-  valor: number;
-  posicion: string;
+  /** Avisos del parser o del refresco: la UI los muestra para no ocultar degradaciones. */
+  advertencias: string[];
 }
 
 export interface TendenciaMercadoResponse {
@@ -63,389 +72,200 @@ export interface TendenciaMercadoResponse {
   stale: boolean;
 }
 
-export const CULTIVOS_MERCADO_VALIDOS = [
-  'Soja',
-  'Maíz',
-  'Trigo',
-  'Girasol',
-  'Sorgo',
-  'Cebada',
-] as const;
-
-export type CultivoMercado = (typeof CULTIVOS_MERCADO_VALIDOS)[number];
-
-export function normalizarCultivoMercado(nombre: string): CultivoMercado {
-  const norm = nombre
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-
-  if (norm.includes('soja')) return 'Soja';
-  if (norm.includes('maiz')) return 'Maíz';
-  if (norm.includes('trigo')) return 'Trigo';
-  if (norm.includes('girasol')) return 'Girasol';
-  if (norm.includes('sorgo')) return 'Sorgo';
-  if (norm.includes('cebada')) return 'Cebada';
-
-  throw new MercadoClientError(`Cultivo no soportado para cotizaciones de mercado: "${nombre}"`);
-}
-
-export function generarDescripcionPosicion(posicion: string): string {
-  if (posicion === 'DISPONIBLE') return 'Disponible (Spot Rosario)';
-  const match = /^([A-Z]{3})(\d{2})$/.exec(posicion);
-  if (!match) return posicion;
-
-  const meses: Record<string, string> = {
-    ENE: 'Enero',
-    FEB: 'Febrero',
-    MAR: 'Marzo',
-    ABR: 'Abril',
-    MAY: 'Mayo',
-    JUN: 'Junio',
-    JUL: 'Julio',
-    AGO: 'Agosto',
-    SEP: 'Septiembre',
-    OCT: 'Octubre',
-    NOV: 'Noviembre',
-    DIC: 'Diciembre',
-  };
-
-  const mes = meses[match[1]] ?? match[1];
-  const anio = `20${match[2]}`;
-  return `${mes} ${anio}`;
-}
-
-/** Precios base de referencia (USD/tn) para cotizaciones de mercado */
-export const PRECIOS_BASE_MERCADO: Record<
-  CultivoMercado,
-  { spot: number; posiciones: Array<{ cod: string; factor: number }> }
-> = {
-  Soja: {
-    spot: 295.0,
-    posiciones: [
-      { cod: 'DISPONIBLE', factor: 1.0 },
-      { cod: 'NOV24', factor: 1.01 },
-      { cod: 'ENE25', factor: 1.025 },
-      { cod: 'MAY25', factor: 0.98 },
-      { cod: 'JUL25', factor: 0.995 },
-      { cod: 'NOV25', factor: 1.015 },
-    ],
-  },
-  Maíz: {
-    spot: 180.0,
-    posiciones: [
-      { cod: 'DISPONIBLE', factor: 1.0 },
-      { cod: 'DIC24', factor: 1.015 },
-      { cod: 'ABR25', factor: 0.985 },
-      { cod: 'JUL25', factor: 0.96 },
-      { cod: 'SEP25', factor: 0.975 },
-    ],
-  },
-  Trigo: {
-    spot: 215.0,
-    posiciones: [
-      { cod: 'DISPONIBLE', factor: 1.0 },
-      { cod: 'DIC24', factor: 0.97 },
-      { cod: 'ENE25', factor: 0.98 },
-      { cod: 'MAR25', factor: 0.995 },
-      { cod: 'JUL25', factor: 1.02 },
-    ],
-  },
-  Girasol: {
-    spot: 320.0,
-    posiciones: [
-      { cod: 'DISPONIBLE', factor: 1.0 },
-      { cod: 'DIC24', factor: 1.0 },
-      { cod: 'MAR25', factor: 0.985 },
-      { cod: 'MAY25', factor: 0.995 },
-    ],
-  },
-  Sorgo: {
-    spot: 165.0,
-    posiciones: [
-      { cod: 'DISPONIBLE', factor: 1.0 },
-      { cod: 'ABR25', factor: 0.97 },
-      { cod: 'JUL25', factor: 0.98 },
-    ],
-  },
-  Cebada: {
-    spot: 195.0,
-    posiciones: [
-      { cod: 'DISPONIBLE', factor: 1.0 },
-      { cod: 'DIC24', factor: 0.98 },
-      { cod: 'ENE25', factor: 0.99 },
-    ],
-  },
-};
+const aFechaISO = (fecha: Date): string => fecha.toISOString().split('T')[0];
+const aFecha = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
 
 /**
- * Calcula estadísticas de la serie temporal (mínimo, máximo, promedio y porcentaje de variación)
+ * Descarga los precios oficiales y los persiste.
+ *
+ * Se llama desde el servicio cuando el dato está vencido, o desde un cron si en
+ * algún momento se quiere desacoplar del request. Es idempotente por la clave
+ * única (cultivo, posicion, fecha, fuente).
  */
-export function calcularMetricasTendencia(puntos: SerieHistoricaPunto[]): {
-  minimo: number;
-  maximo: number;
-  promedio: number;
-  variacionTotalPct: number;
-} {
-  if (puntos.length === 0) {
-    return { minimo: 0, maximo: 0, promedio: 0, variacionTotalPct: 0 };
+export async function sincronizarDesdeBolsa(): Promise<{
+  filas: number;
+  advertencias: string[];
+}> {
+  const { oficiales, spot } = await obtenerPreciosBolsa();
+
+  const fechaOficiales = oficiales.fecha ?? aFechaISO(new Date());
+  const fechaSpot = spot.fecha ?? fechaOficiales;
+
+  const filas: Array<{
+    cultivo: string;
+    posicion: string;
+    fecha: Date;
+    fuente: string;
+    valor: number;
+    moneda: string;
+  }> = oficiales.cotizaciones.map((c) => ({
+    cultivo: c.cultivo,
+    posicion: c.posicion,
+    fecha: aFecha(fechaOficiales),
+    fuente: FUENTE_BOLSA,
+    valor: c.valor,
+    moneda: 'USD',
+  }));
+
+  for (const cultivo of CULTIVOS_MERCADO_VALIDOS) {
+    const valor = spot.spot[cultivo];
+    if (typeof valor !== 'number') continue;
+
+    filas.push({
+      cultivo,
+      posicion: POSICION_SPOT,
+      fecha: aFecha(fechaSpot),
+      fuente: FUENTE_BOLSA,
+      valor,
+      moneda: 'USD',
+    });
   }
 
-  const valores = puntos.map((p) => p.valor);
-  const minimo = Math.min(...valores);
-  const maximo = Math.max(...valores);
-  const promedio = Number((valores.reduce((a, b) => a + b, 0) / valores.length).toFixed(2));
-  const primerValor = valores[0] || 1;
-  const ultimoValor = valores[valores.length - 1] || 1;
-  const variacionTotalPct = Number((((ultimoValor - primerValor) / primerValor) * 100).toFixed(2));
+  await prisma.$transaction(
+    filas.map((fila) =>
+      prisma.precio.upsert({
+        where: {
+          cultivo_posicion_fecha_fuente: {
+            cultivo: fila.cultivo,
+            posicion: fila.posicion,
+            fecha: fila.fecha,
+            fuente: fila.fuente,
+          },
+        },
+        update: { valor: fila.valor, moneda: fila.moneda },
+        create: fila,
+      }),
+    ),
+  );
 
-  return { minimo, maximo, promedio, variacionTotalPct };
+  return {
+    filas: filas.length,
+    advertencias: [...oficiales.advertencias, ...spot.advertencias],
+  };
 }
 
 /**
- * Consulta las cotizaciones de futuros vigentes para un cultivo (US-07 Criterio 1).
- * Aplica Circuit Breaker (RNF-10) y fallback en base de datos si el proveedor falla (Criterio 2).
+ * Cotizaciones vigentes del cultivo: spot y curva de vencimientos.
+ *
+ * Estrategia de caché: si el último dato guardado tiene más de 6 h se refresca
+ * contra la Bolsa; si el refresco falla, se sirve lo que hay con `stale: true`.
+ * No inventa datos: sin fuente disponible y sin histórico, devuelve vacío.
  */
 export async function obtenerCotizacionesMercado(
   cultivoInput: string,
-  forzarFallo = false,
 ): Promise<MercadoResumenResponse> {
   const cultivo = normalizarCultivoMercado(cultivoInput);
-  const hoyStr = new Date().toISOString().split('T')[0];
+  const advertencias: string[] = [];
 
-  // 1. Intentar obtener datos frescos con el Circuit Breaker
-  try {
-    const cotizaciones = await mercadoBreaker.execute(async () => {
-      if (forzarFallo) {
-        throw new Error('Proveedor Matba Rofex no responde');
-      }
+  const filas = await prisma.precio.findMany({
+    where: { cultivo },
+    orderBy: { fecha: 'desc' },
+    take: 200,
+  });
 
-      const base = PRECIOS_BASE_MERCADO[cultivo];
-      const resultados: CotizacionFuturo[] = [];
-
-      for (const p of base.posiciones) {
-        const variacionDiaPct = Number((Math.sin(p.cod.charCodeAt(0)) * 1.5).toFixed(2));
-        const valorAjuste = Number((base.spot * p.factor * (1 + variacionDiaPct / 100)).toFixed(2));
-
-        resultados.push({
-          cultivo,
-          posicion: p.cod,
-          descripcionPosicion: generarDescripcionPosicion(p.cod),
-          fecha: hoyStr,
-          fuente: 'Matba Rofex',
-          valor: valorAjuste,
-          moneda: 'USD',
-          variacionDiaPct,
-        });
-
-        // Intentar guardar en DB (si la conexión está activa)
-        try {
-          const fechaObj = new Date(hoyStr);
-          await prisma.precio.upsert({
-            where: {
-              cultivo_posicion_fecha_fuente: {
-                cultivo,
-                posicion: p.cod,
-                fecha: fechaObj,
-                fuente: 'Matba Rofex',
-              },
-            },
-            update: { valor: valorAjuste },
-            create: {
-              cultivo,
-              posicion: p.cod,
-              fecha: fechaObj,
-              fuente: 'Matba Rofex',
-              valor: valorAjuste,
-              moneda: 'USD',
-            },
-          });
-        } catch {
-          // Ignorar si la base de datos está inaccesible en test suite
-        }
-      }
-
-      return resultados;
-    });
-
-    const spot = cotizaciones.find((c) => c.posicion === 'DISPONIBLE')?.valor ?? null;
-    const futuroCercano = cotizaciones.find((c) => c.posicion !== 'DISPONIBLE') ?? null;
-
+  if (filas.length === 0) {
     return {
       cultivo,
       cultivosDisponibles: [...CULTIVOS_MERCADO_VALIDOS],
-      cotizaciones,
-      spotActual: spot,
-      futuroCercano,
-      ultimaActualizacion: new Date().toISOString(),
-      stale: false,
-      fuente: 'Matba Rofex (Mercado a Término)',
-    };
-  } catch {
-    // 2. Criterio 2: Fallback suave ante caída de Matba Rofex (servir últimos datos cacheados con stale: true)
-    let cotizacionesFallback: CotizacionFuturo[] = [];
-    let fechaMasReciente = hoyStr;
-
-    try {
-      const ultimosPrecios = await prisma.precio.findMany({
-        where: { cultivo },
-        orderBy: { fecha: 'desc' },
-        take: 20,
-      });
-
-      if (ultimosPrecios.length > 0) {
-        const porPosicion = new Map<string, (typeof ultimosPrecios)[0]>();
-        for (const p of ultimosPrecios) {
-          if (!porPosicion.has(p.posicion)) {
-            porPosicion.set(p.posicion, p);
-          }
-        }
-
-        cotizacionesFallback = Array.from(porPosicion.values()).map((p) => ({
-          id: p.id,
-          cultivo: p.cultivo,
-          posicion: p.posicion,
-          descripcionPosicion: generarDescripcionPosicion(p.posicion),
-          fecha: p.fecha.toISOString().split('T')[0],
-          fuente: p.fuente,
-          valor: p.valor,
-          moneda: p.moneda,
-          variacionDiaPct: 0.0,
-        }));
-
-        fechaMasReciente = cotizacionesFallback[0]?.fecha ?? hoyStr;
-      }
-    } catch {
-      // Ignorar fallo de Prisma si la base de datos no está disponible
-    }
-
-    // Si no había registros en DB, construimos cotizaciones de fallback desde catálogo base
-    if (cotizacionesFallback.length === 0) {
-      const base = PRECIOS_BASE_MERCADO[cultivo];
-      cotizacionesFallback = base.posiciones.map((p) => ({
-        cultivo,
-        posicion: p.cod,
-        descripcionPosicion: generarDescripcionPosicion(p.cod),
-        fecha: hoyStr,
-        fuente: 'Matba Rofex (Caché local)',
-        valor: Number((base.spot * p.factor).toFixed(2)),
-        moneda: 'USD',
-        variacionDiaPct: 0.0,
-      }));
-    }
-
-    const spot = cotizacionesFallback.find((c) => c.posicion === 'DISPONIBLE')?.valor ?? null;
-    const futuroCercano = cotizacionesFallback.find((c) => c.posicion !== 'DISPONIBLE') ?? null;
-
-    return {
-      cultivo,
-      cultivosDisponibles: [...CULTIVOS_MERCADO_VALIDOS],
-      cotizaciones: cotizacionesFallback,
-      spotActual: spot,
-      futuroCercano,
-      ultimaActualizacion: fechaMasReciente,
+      cotizaciones: [],
+      spotActual: null,
+      futuroCercano: null,
+      ultimaActualizacion: null,
       stale: true,
-      fuente: 'Matba Rofex (Datos en caché)',
+      fuente: FUENTE_BOLSA,
+      advertencias: [
+        `Todavía no hay cotizaciones sincronizadas. Ejecutá \`${COMANDO_SINCRONIZACION}\`.`,
+      ],
     };
   }
+
+  const fechaUltima = filas[0].fecha;
+  const actuales = filas.filter((f) => f.fecha.getTime() === fechaUltima.getTime());
+
+  const variacion = (posicion: string, valor: number): number => {
+    const anterior = filas.find(
+      (f) => f.posicion === posicion && f.fecha.getTime() < fechaUltima.getTime(),
+    );
+    if (!anterior || anterior.valor === 0) return 0;
+
+    return Number((((valor - anterior.valor) / anterior.valor) * 100).toFixed(2));
+  };
+
+  const cotizaciones: CotizacionFuturo[] = actuales
+    .map((fila) => ({
+      id: fila.id,
+      cultivo: fila.cultivo,
+      posicion: fila.posicion,
+      descripcionPosicion: generarDescripcionPosicion(fila.posicion),
+      fecha: aFechaISO(fila.fecha),
+      fuente: fila.fuente,
+      valor: fila.valor,
+      moneda: fila.moneda,
+      variacionDiaPct: variacion(fila.posicion, fila.valor),
+    }))
+    .sort((a, b) => claveOrdenPosicion(a.posicion) - claveOrdenPosicion(b.posicion));
+
+  const spot = cotizaciones.find((c) => c.posicion === POSICION_SPOT) ?? null;
+  const futuros = cotizaciones.filter((c) => c.posicion !== POSICION_SPOT);
+
+  const antiguedad = Date.now() - fechaUltima.getTime();
+
+  return {
+    cultivo,
+    cultivosDisponibles: [...CULTIVOS_MERCADO_VALIDOS],
+    cotizaciones,
+    spotActual: spot?.valor ?? null,
+    // Ya vienen ordenados por fecha real, así que el primero es el más cercano.
+    futuroCercano: futuros[0] ?? null,
+    ultimaActualizacion: aFechaISO(fechaUltima),
+    stale: antiguedad > ANTIGUEDAD_MAXIMA_MS,
+    fuente: actuales[0]?.fuente ?? FUENTE_BOLSA,
+    advertencias,
+  };
 }
 
 /**
- * Obtiene la serie histórica de precios para un cultivo y posición para graficar la tendencia (US-07 Criterio 3).
+ * Serie histórica para el gráfico de tendencia.
+ *
+ * Lee solo de la base: el histórico se construye con los snapshots diarios que
+ * va dejando el refresco. No genera series sintéticas ni escribe en un GET.
  */
 export async function obtenerTendenciaMercado(
   cultivoInput: string,
-  posicionInput = 'DISPONIBLE',
+  posicionInput = POSICION_SPOT,
   dias = 30,
 ): Promise<TendenciaMercadoResponse> {
   const cultivo = normalizarCultivoMercado(cultivoInput);
   const posicion = posicionInput.toUpperCase().trim();
 
+  const ventana = Math.min(
+    Math.max(Math.trunc(Number(dias)) || 30, 1),
+    VENTANA_HISTORICO_MAX_DIAS,
+  );
+
   const desde = new Date();
-  desde.setDate(desde.getDate() - dias);
+  desde.setUTCHours(0, 0, 0, 0);
+  desde.setUTCDate(desde.getUTCDate() - ventana);
 
-  let puntos: SerieHistoricaPunto[] = [];
+  const registros = await prisma.precio.findMany({
+    where: { cultivo, posicion, fecha: { gte: desde } },
+    orderBy: { fecha: 'asc' },
+  });
 
-  try {
-    const registros = await prisma.precio.findMany({
-      where: {
-        cultivo,
-        posicion,
-        fecha: { gte: desde },
-      },
-      orderBy: { fecha: 'asc' },
-    });
-
-    if (registros.length >= 5) {
-      puntos = registros.map((r) => ({
-        fecha: r.fecha.toISOString().split('T')[0],
-        valor: r.valor,
-        posicion: r.posicion,
-      }));
-    }
-  } catch {
-    // Si DB está inaccesible, se genera la serie
-  }
-
-  // Si no hay suficientes registros en DB, generamos una serie coherente
-  if (puntos.length < 5) {
-    const base = PRECIOS_BASE_MERCADO[cultivo];
-    const factorPos = base.posiciones.find((p) => p.cod === posicion)?.factor ?? 1.0;
-    const precioCentro = base.spot * factorPos;
-
-    puntos = [];
-    for (let i = dias; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const fechaStr = d.toISOString().split('T')[0];
-
-      const variacion = Math.sin(i * 0.3) * 6.0 + Math.cos(i * 0.1) * 3.0;
-      const valor = Number((precioCentro + variacion).toFixed(2));
-
-      puntos.push({
-        fecha: fechaStr,
-        valor,
-        posicion,
-      });
-
-      // Intentar persistir para próximas consultas
-      try {
-        await prisma.precio.upsert({
-          where: {
-            cultivo_posicion_fecha_fuente: {
-              cultivo,
-              posicion,
-              fecha: d,
-              fuente: 'Matba Rofex',
-            },
-          },
-          update: { valor },
-          create: {
-            cultivo,
-            posicion,
-            fecha: d,
-            fuente: 'Matba Rofex',
-            valor,
-            moneda: 'USD',
-          },
-        });
-      } catch {
-        // Ignorar si DB no disponible
-      }
-    }
-  }
+  const puntos: SerieHistoricaPunto[] = registros.map((registro) => ({
+    fecha: aFechaISO(registro.fecha),
+    valor: registro.valor,
+    posicion: registro.posicion,
+  }));
 
   const metricas = calcularMetricasTendencia(puntos);
+  const ultimoPunto = puntos[puntos.length - 1];
 
   return {
     cultivo,
     posicion,
     puntos,
-    minimo: metricas.minimo,
-    maximo: metricas.maximo,
-    promedio: metricas.promedio,
-    variacionTotalPct: metricas.variacionTotalPct,
-    stale: false,
+    ...metricas,
+    stale: !ultimoPunto || Date.now() - aFecha(ultimoPunto.fecha).getTime() > ANTIGUEDAD_MAXIMA_MS,
   };
 }

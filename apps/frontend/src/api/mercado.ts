@@ -1,4 +1,4 @@
-import { apiFetch } from './http.js';
+import { apiFetch } from './http';
 
 export interface CotizacionFuturo {
   id?: string;
@@ -18,9 +18,10 @@ export interface MercadoResumenResponse {
   cotizaciones: CotizacionFuturo[];
   spotActual: number | null;
   futuroCercano: CotizacionFuturo | null;
-  ultimaActualizacion: string;
+  ultimaActualizacion: string | null;
   stale: boolean;
   fuente: string;
+  advertencias: string[];
 }
 
 export interface SerieHistoricaPunto {
@@ -41,7 +42,9 @@ export interface TendenciaMercadoResponse {
 }
 
 export async function obtenerCotizaciones(cultivo = 'Soja'): Promise<MercadoResumenResponse> {
-  return apiFetch<MercadoResumenResponse>(`/api/mercado/cotizaciones?cultivo=${encodeURIComponent(cultivo)}`);
+  return apiFetch<MercadoResumenResponse>(
+    `/api/mercado/cotizaciones?cultivo=${encodeURIComponent(cultivo)}`,
+  );
 }
 
 export async function obtenerTendencia(
