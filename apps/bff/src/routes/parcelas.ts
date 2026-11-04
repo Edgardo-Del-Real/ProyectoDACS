@@ -233,6 +233,155 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // GET /api/parcelas/:id - Obtener detalle completo de una parcela por ID (P4)
+  app.get<{ Params: { id: string } }>(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Parcelas'],
+        summary: 'Obtener detalle de una parcela por ID con su polígono GeoJSON (P4)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id } = request.params;
+
+      // Se proyectan solo los campos que el cliente necesita: nunca se expone
+      // `userId` ni columnas internas en la respuesta HTTP.
+      const parcela = await prisma.parcela.findFirst({
+        where: { id, userId },
+        select: {
+          id: true,
+          nombre: true,
+          poligono: true,
+          hectareas: true,
+          createdAt: true,
+        },
+      });
+
+      if (!parcela) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      return parcela;
+    },
+  );
+
+  // PUT /api/parcelas/:id - Actualizar nombre de una parcela (US-01 / E2)
+  app.put<{ Params: { id: string }; Body: { nombre: string } }>(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Parcelas'],
+        summary: 'Actualizar nombre de una parcela (US-01 / E2)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['nombre'],
+          properties: {
+            // `minLength` se valida sobre el texto crudo: un nombre de solo
+            // espacios lo pasa, por eso el handler revalida sobre el valor trimeado.
+            nombre: { type: 'string', minLength: 1, maxLength: 120 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id } = request.params;
+      const nombreNormalizado = request.body.nombre.trim();
+
+      if (nombreNormalizado.length === 0) {
+        return reply.code(400).send({ error: 'El nombre de la parcela no puede estar vacío' });
+      }
+
+      const parcelaExistente = await prisma.parcela.findFirst({
+        where: { id, userId },
+      });
+
+      if (!parcelaExistente) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      // Se actualiza con el mismo filtro de ownership para no depender del
+      // chequeo previo (evita una carrera entre el findFirst y el update).
+      const { count } = await prisma.parcela.updateMany({
+        where: { id, userId },
+        data: { nombre: nombreNormalizado },
+      });
+
+      if (count === 0) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      const parcelaActualizada = await prisma.parcela.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          nombre: true,
+          poligono: true,
+          hectareas: true,
+          createdAt: true,
+        },
+      });
+
+      return reply.code(200).send(parcelaActualizada);
+    },
+  );
+
+  // DELETE /api/parcelas/:id - Eliminar una parcela y sus datos asociados (US-01 / E2)
+  app.delete<{ Params: { id: string } }>(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Parcelas'],
+        summary: 'Eliminar una parcela por ID (y sus campañas/clima en cascada)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id } = request.params;
+
+      // `deleteMany` aplica ownership en la misma operación: si el filtro no
+      // matchea, no borra nada y se responde 404 sin revelar si existe.
+      const { count } = await prisma.parcela.deleteMany({
+        where: { id, userId },
+      });
+
+      if (count === 0) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      return reply.code(204).send();
+    },
+  );
+
   // --- US-04: Historial de Campañas de la Parcela ---
 
   // GET /api/parcelas/:id/campanias - Listar historial ordenado por campaña

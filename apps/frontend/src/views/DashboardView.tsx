@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { eliminarParcela } from '../api/parcelas';
+import { ApiError } from '../api/http';
 
 interface Parcela {
   id: string;
@@ -32,6 +35,11 @@ export const DashboardView: React.FC = () => {
 
   const [climaPrincipal, setClimaPrincipal] = useState<PronosticoResponse | null>(null);
   const [cargandoClima, setCargandoClima] = useState<boolean>(false);
+
+  // Eliminación de parcelas: el diálogo confirma, el handler ejecuta.
+  const [parcelaAEliminar, setParcelaAEliminar] = useState<Parcela | null>(null);
+  const [eliminandoParcela, setEliminandoParcela] = useState(false);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
 
   const getToken = () => localStorage.getItem('token') || localStorage.getItem('dacs_token');
 
@@ -97,6 +105,28 @@ export const DashboardView: React.FC = () => {
       setCargando(false);
     }
   }, [cargarClimaParcela]);
+
+  const handleConfirmarEliminar = async () => {
+    if (!parcelaAEliminar) return;
+
+    setEliminandoParcela(true);
+    setErrorAccion(null);
+    try {
+      await eliminarParcela(parcelaAEliminar.id);
+      setParcelas((prev) => prev.filter((p) => p.id !== parcelaAEliminar.id));
+      if (climaPrincipal?.parcelaId === parcelaAEliminar.id) {
+        setClimaPrincipal(null);
+      }
+      setParcelaAEliminar(null);
+    } catch (err) {
+      setErrorAccion(
+        err instanceof ApiError ? err.message : 'No se pudo eliminar la parcela.',
+      );
+      setParcelaAEliminar(null);
+    } finally {
+      setEliminandoParcela(false);
+    }
+  };
 
   useEffect(() => {
     // Carga inicial de datos al montar. El setState del spinner es intencional.
@@ -198,8 +228,20 @@ export const DashboardView: React.FC = () => {
                         to={`/parcelas/${p.id}`}
                         className="px-3.5 py-2 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-400 text-emerald-700 text-xs font-semibold rounded-lg transition inline-flex items-center gap-1 shadow-sm"
                       >
-                        Ver Clima y Campañas ➔
+                        Ver Detalle ➔
                       </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorAccion(null);
+                          setParcelaAEliminar(p);
+                        }}
+                        aria-label={`Eliminar parcela ${p.nombre ?? 'sin nombre'}`}
+                        title="Eliminar parcela"
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition text-xs font-semibold"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -289,6 +331,28 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {errorAccion && (
+        <div
+          role="alert"
+          className="rounded-xl p-4 bg-red-50 border border-red-200 text-red-800 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg">⚠️</span>
+          <p className="font-medium">{errorAccion}</p>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={parcelaAEliminar !== null}
+        tone="danger"
+        title="Eliminar parcela"
+        description={`¿Eliminás la parcela "${parcelaAEliminar?.nombre ?? 'seleccionada'}"?\n\nEsta acción no se puede deshacer y borrará también el historial de campañas registrado en el lote.`}
+        confirmLabel="Eliminar"
+        cancelLabel="Conservar parcela"
+        busy={eliminandoParcela}
+        onConfirm={handleConfirmarEliminar}
+        onCancel={() => setParcelaAEliminar(null)}
+      />
     </div>
   );
 };
