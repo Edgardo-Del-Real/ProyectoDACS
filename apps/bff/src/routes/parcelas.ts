@@ -255,8 +255,17 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const userId = request.user.id;
       const { id } = request.params;
 
+      // Se proyectan solo los campos que el cliente necesita: nunca se expone
+      // `userId` ni columnas internas en la respuesta HTTP.
       const parcela = await prisma.parcela.findFirst({
         where: { id, userId },
+        select: {
+          id: true,
+          nombre: true,
+          poligono: true,
+          hectareas: true,
+          createdAt: true,
+        },
       });
 
       if (!parcela) {
@@ -287,7 +296,9 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
           type: 'object',
           required: ['nombre'],
           properties: {
-            nombre: { type: 'string', minLength: 1 },
+            // `minLength` se valida sobre el texto crudo: un nombre de solo
+            // espacios lo pasa, por eso el handler revalida sobre el valor trimeado.
+            nombre: { type: 'string', minLength: 1, maxLength: 120 },
           },
         },
       },
@@ -295,7 +306,11 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const userId = request.user.id;
       const { id } = request.params;
-      const { nombre } = request.body;
+      const nombreNormalizado = request.body.nombre.trim();
+
+      if (nombreNormalizado.length === 0) {
+        return reply.code(400).send({ error: 'El nombre de la parcela no puede estar vacío' });
+      }
 
       const parcelaExistente = await prisma.parcela.findFirst({
         where: { id, userId },
@@ -305,9 +320,26 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ error: 'Parcela no encontrada' });
       }
 
-      const parcelaActualizada = await prisma.parcela.update({
+      // Se actualiza con el mismo filtro de ownership para no depender del
+      // chequeo previo (evita una carrera entre el findFirst y el update).
+      const { count } = await prisma.parcela.updateMany({
+        where: { id, userId },
+        data: { nombre: nombreNormalizado },
+      });
+
+      if (count === 0) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      const parcelaActualizada = await prisma.parcela.findUnique({
         where: { id },
-        data: { nombre: nombre.trim() },
+        select: {
+          id: true,
+          nombre: true,
+          poligono: true,
+          hectareas: true,
+          createdAt: true,
+        },
       });
 
       return reply.code(200).send(parcelaActualizada);
@@ -336,19 +368,17 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const userId = request.user.id;
       const { id } = request.params;
 
-      const parcelaExistente = await prisma.parcela.findFirst({
+      // `deleteMany` aplica ownership en la misma operación: si el filtro no
+      // matchea, no borra nada y se responde 404 sin revelar si existe.
+      const { count } = await prisma.parcela.deleteMany({
         where: { id, userId },
       });
 
-      if (!parcelaExistente) {
+      if (count === 0) {
         return reply.code(404).send({ error: 'Parcela no encontrada' });
       }
 
-      await prisma.parcela.delete({
-        where: { id },
-      });
-
-      return reply.code(200).send({ message: 'Parcela eliminada correctamente' });
+      return reply.code(204).send();
     },
   );
 

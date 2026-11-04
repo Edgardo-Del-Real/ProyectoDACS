@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { eliminarParcela } from '../api/parcelas';
+import { ApiError } from '../api/http';
 
 interface Parcela {
   id: string;
@@ -32,6 +35,11 @@ export const DashboardView: React.FC = () => {
 
   const [climaPrincipal, setClimaPrincipal] = useState<PronosticoResponse | null>(null);
   const [cargandoClima, setCargandoClima] = useState<boolean>(false);
+
+  // Eliminación de parcelas: el diálogo confirma, el handler ejecuta.
+  const [parcelaAEliminar, setParcelaAEliminar] = useState<Parcela | null>(null);
+  const [eliminandoParcela, setEliminandoParcela] = useState(false);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
 
   const getToken = () => localStorage.getItem('token') || localStorage.getItem('dacs_token');
 
@@ -98,31 +106,25 @@ export const DashboardView: React.FC = () => {
     }
   }, [cargarClimaParcela]);
 
-  const handleEliminarParcela = async (parcelaId: string, nombre: string | null) => {
-    const confirmacion = confirm(
-      `¿Estás seguro de que deseás eliminar la parcela "${nombre || 'esta parcela'}"?\n\nEsta acción no se puede deshacer y borrará también el historial de campañas registrado en el lote.`,
-    );
-    if (!confirmacion) return;
+  const handleConfirmarEliminar = async () => {
+    if (!parcelaAEliminar) return;
 
-    const token = getToken();
-    if (!token) return;
-
+    setEliminandoParcela(true);
+    setErrorAccion(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${parcelaId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) {
-        throw new Error('Error al eliminar');
-      }
-
-      setParcelas((prev) => prev.filter((p) => p.id !== parcelaId));
-      if (climaPrincipal?.parcelaId === parcelaId) {
+      await eliminarParcela(parcelaAEliminar.id);
+      setParcelas((prev) => prev.filter((p) => p.id !== parcelaAEliminar.id));
+      if (climaPrincipal?.parcelaId === parcelaAEliminar.id) {
         setClimaPrincipal(null);
       }
-    } catch {
-      alert('No se pudo eliminar la parcela');
+      setParcelaAEliminar(null);
+    } catch (err) {
+      setErrorAccion(
+        err instanceof ApiError ? err.message : 'No se pudo eliminar la parcela.',
+      );
+      setParcelaAEliminar(null);
+    } finally {
+      setEliminandoParcela(false);
     }
   };
 
@@ -230,7 +232,11 @@ export const DashboardView: React.FC = () => {
                       </Link>
                       <button
                         type="button"
-                        onClick={() => handleEliminarParcela(p.id, p.nombre)}
+                        onClick={() => {
+                          setErrorAccion(null);
+                          setParcelaAEliminar(p);
+                        }}
+                        aria-label={`Eliminar parcela ${p.nombre ?? 'sin nombre'}`}
                         title="Eliminar parcela"
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition text-xs font-semibold"
                       >
@@ -325,6 +331,28 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {errorAccion && (
+        <div
+          role="alert"
+          className="rounded-xl p-4 bg-red-50 border border-red-200 text-red-800 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg">⚠️</span>
+          <p className="font-medium">{errorAccion}</p>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={parcelaAEliminar !== null}
+        tone="danger"
+        title="Eliminar parcela"
+        description={`¿Eliminás la parcela "${parcelaAEliminar?.nombre ?? 'seleccionada'}"?\n\nEsta acción no se puede deshacer y borrará también el historial de campañas registrado en el lote.`}
+        confirmLabel="Eliminar"
+        cancelLabel="Conservar parcela"
+        busy={eliminandoParcela}
+        onConfirm={handleConfirmarEliminar}
+        onCancel={() => setParcelaAEliminar(null)}
+      />
     </div>
   );
 };
