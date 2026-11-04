@@ -255,8 +255,17 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const userId = request.user.id;
       const { id } = request.params;
 
+      // Se proyectan solo los campos que el cliente necesita: nunca se expone
+      // `userId` ni columnas internas en la respuesta HTTP.
       const parcela = await prisma.parcela.findFirst({
         where: { id, userId },
+        select: {
+          id: true,
+          nombre: true,
+          poligono: true,
+          hectareas: true,
+          createdAt: true,
+        },
       });
 
       if (!parcela) {

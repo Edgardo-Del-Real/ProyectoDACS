@@ -51,6 +51,7 @@ export function DetalleParcela() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [parcela, setParcela] = useState<ParcelaDetalle | null>(null);
+  const [errorParcela, setErrorParcela] = useState<string | null>(null);
   const [pronostico, setPronostico] = useState<PronosticoResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +140,11 @@ export function DetalleParcela() {
         if (resParcela.ok) {
           const dataParcela: ParcelaDetalle = await resParcela.json();
           setParcela(dataParcela);
+          setErrorParcela(null);
+        } else if (resParcela.status === 401) {
+          setErrorParcela('Sesión expirada: no se pudo cargar el mapa del lote.');
+        } else {
+          setErrorParcela('No se pudo cargar el polígono del lote.');
         }
 
         setCargando(false);
@@ -465,11 +471,21 @@ export function DetalleParcela() {
             </div>
           </div>
 
-          <MapaDetalleParcela
-            poligono={parcela.poligono}
-            nombre={parcela.nombre}
-            hectareas={parcela.hectareas}
-          />
+          <MapaDetalleParcela poligono={parcela.poligono} />
+        </div>
+      )}
+
+      {/* Si el detalle no cargó, el clima sigue funcionando: se avisa sin bloquear la página */}
+      {!parcela && errorParcela && (
+        <div
+          role="alert"
+          className="rounded-xl p-4 bg-amber-50 border border-amber-200 text-amber-900 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg">🗺️</span>
+          <div>
+            <strong className="font-semibold">No se pudo mostrar el mapa del lote:</strong>{' '}
+            {errorParcela} El resto de la información de la parcela sigue disponible.
+          </div>
         </div>
       )}
 

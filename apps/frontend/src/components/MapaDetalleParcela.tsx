@@ -6,8 +6,6 @@ import 'leaflet/dist/leaflet.css';
 
 interface MapaDetalleParcelaProps {
   poligono: Polygon;
-  nombre?: string | null;
-  hectareas?: number | null;
 }
 
 /**
