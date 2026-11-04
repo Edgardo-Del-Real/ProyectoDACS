@@ -1,10 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db.js';
-import { obtenerCatalogoRotacion, obtenerPlanRotacion } from '../services/rotacion.js';
-
-const HORIZONTE_MIN = 1;
-const HORIZONTE_MAX = 6;
-const HORIZONTE_DEFECTO = 4;
+import {
+  HORIZONTE_MAXIMO,
+  HORIZONTE_MINIMO,
+  HORIZONTE_POR_DEFECTO,
+  obtenerCatalogoRotacion,
+  obtenerPlanRotacion,
+} from '../services/rotacion.js';
 
 const errorSchema = {
   type: 'object',
@@ -56,12 +58,13 @@ export const rotacionRoutes: FastifyPluginAsync = async (app) => {
           properties: {
             anios: {
               type: 'integer',
-              minimum: HORIZONTE_MIN,
-              maximum: HORIZONTE_MAX,
-              default: HORIZONTE_DEFECTO,
+              minimum: HORIZONTE_MINIMO,
+              maximum: HORIZONTE_MAXIMO,
+              default: HORIZONTE_POR_DEFECTO,
             },
             excluir: {
               type: 'string',
+              maxLength: 500,
               description: 'Lista de cultivos separados por coma que el productor no siembra en el lote',
             },
           },
@@ -69,7 +72,6 @@ export const rotacionRoutes: FastifyPluginAsync = async (app) => {
         response: {
           400: errorSchema,
           401: errorSchema,
-          403: errorSchema,
           404: errorSchema,
           500: errorSchema,
         },
@@ -79,7 +81,7 @@ export const rotacionRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const userId = request.user.id;
       const parcelaId = request.params.id;
-      const horizonteAnios = request.query.anios ?? HORIZONTE_DEFECTO;
+      const horizonteAnios = request.query.anios ?? HORIZONTE_POR_DEFECTO;
       const cultivosExcluidos = request.query.excluir
         ? request.query.excluir
             .split(',')
@@ -90,24 +92,24 @@ export const rotacionRoutes: FastifyPluginAsync = async (app) => {
       // AJV puede coercionar "Infinity" sin rechazarlo con su configuración no estricta.
       if (
         !Number.isInteger(horizonteAnios) ||
-        horizonteAnios < HORIZONTE_MIN ||
-        horizonteAnios > HORIZONTE_MAX
+        horizonteAnios < HORIZONTE_MINIMO ||
+        horizonteAnios > HORIZONTE_MAXIMO
       ) {
-        return reply
-          .code(400)
-          .send({ error: `anios debe ser un entero entre ${HORIZONTE_MIN} y ${HORIZONTE_MAX}` });
+        return reply.code(400).send({
+          error: `anios debe ser un entero entre ${HORIZONTE_MINIMO} y ${HORIZONTE_MAXIMO}`,
+        });
       }
 
       try {
-        // Se busca solo por id para poder distinguir "no existe" (404) de "es de otro usuario" (403).
-        const parcela = await prisma.parcela.findUnique({ where: { id: parcelaId } });
+        // Se filtra por dueño en la misma consulta: si la parcela existe pero es
+        // de otro usuario se responde 404, igual que el resto del BFF. Un 403
+        // confirmaría que el ID existe y habilitaría enumeración.
+        const parcela = await prisma.parcela.findFirst({
+          where: { id: parcelaId, userId },
+        });
 
         if (!parcela) {
           return reply.code(404).send({ error: 'Parcela no encontrada' });
-        }
-
-        if (parcela.userId !== userId) {
-          return reply.code(403).send({ error: 'No tenés permiso para acceder a esta parcela' });
         }
 
         const plan = await obtenerPlanRotacion(parcelaId, horizonteAnios, cultivosExcluidos);

@@ -67,8 +67,10 @@ const SOLO_DOBLE_CULTIVO = new Set(['soja 2da']);
 /** Tope (en campañas) para el puntaje de "descanso": evita premiar siempre lo que nunca se sembró. */
 const TOPE_DESCANSO = 4;
 
-const HORIZONTE_POR_DEFECTO = 4;
-const HORIZONTE_MAXIMO = 8;
+/** Límites del horizonte del plan: única fuente de verdad, compartida con la capa HTTP. */
+export const HORIZONTE_MINIMO = 1;
+export const HORIZONTE_MAXIMO = 6;
+export const HORIZONTE_POR_DEFECTO = 4;
 
 export function normalizarTexto(texto: string): string {
   return texto
@@ -165,6 +167,14 @@ function esCerealDeInvierno(nombre: string): boolean {
 /**
  * Equivalencias entre nombres cortos cargados en el frontend (`Trigo`, `Sorgo`, `Cebada`, `Maíz temprano`)
  * y los nombres canónicos del seed en Prisma (`Trigo pan`, `Sorgo granífero`, `Cebada cervecera`, `Maíz tardío`).
+ *
+ * `Soja 2da` se normaliza a `Soja 1ra` a propósito: es la misma especie y la misma
+ * familia, así que para el cálculo de rotación y para las reglas sanitarias por
+ * par (Sclerotinia) se comporta igual. El nombre original se conserva en la
+ * respuesta para mostrarlo al productor.
+ *
+ * Deuda conocida: esta tabla existe porque `CampaniaCultivo.cultivo` es texto
+ * libre. Con una FK a `Cultivo` el motor no necesitaría alias ni heurísticas.
  */
 const ALIAS_CANONICOS: Record<string, string> = {
   trigo: 'Trigo pan',

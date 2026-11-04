@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../api/http';
 
 interface PasoRotacion {
   orden: number;
@@ -64,25 +65,15 @@ export function PlanRotacion({ id, revision }: { id: string; revision: number })
       setCargandoPlan(true);
       setErrorPlan(null);
       try {
-        const token = localStorage.getItem('token') || localStorage.getItem('dacs_token');
-        if (!token) throw new Error('No hay sesión activa. Por favor, iniciá sesión.');
-
         const params = new URLSearchParams({ anios: String(anios) });
         if (cultivosExcluidos.length > 0) {
           params.set('excluir', cultivosExcluidos.join(','));
         }
 
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${encodeURIComponent(id)}/rotacion?${params.toString()}`,
-          { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal },
+        const data = await apiFetch<PlanRotacionResponse>(
+          `/api/parcelas/${encodeURIComponent(id)}/rotacion?${params.toString()}`,
+          { signal: controller.signal },
         );
-        if (!response.ok) {
-          const data = await response.json().catch(() => null);
-          throw new Error(
-            data?.error || data?.message || 'Error al obtener el plan de rotación',
-          );
-        }
-        const data: PlanRotacionResponse = await response.json();
         if (!controller.signal.aborted) setPlan(data);
       } catch (err) {
         if (controller.signal.aborted) return;
