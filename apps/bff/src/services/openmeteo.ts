@@ -1,24 +1,38 @@
 import type { Prisma } from '@prisma/client';
 import * as turf from '@turf/turf';
 import { prisma } from '../db.js';
-import { CircuitBreaker } from '../utils/circuit-breaker.js';
+import { CircuitBreaker, NonRetryableError } from '../utils/circuit-breaker.js';
 
 // RNF-08: TTL de caché de pronóstico (3 horas)
 const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 
 // RNF-10: Parámetros de resiliencia para Open-Meteo
-const TIMEOUT_POR_INTENTO_MS = 4_000; // 4 segundos de timeout estricto
-const MAX_REINTENTOS = 3;             // 3 intentos máximos
-const BACKOFF_INICIAL_MS = 300;       // Espera inicial de 300ms
+const TIMEOUT_POR_INTENTO_MS = 4_000; // 4 segundos de timeout estricto por intento
+const MAX_INTENTOS = 3;               // 1 intento inicial + 2 reintentos
+const BACKOFF_INICIAL_MS = 300;       // 300ms, luego 600ms
+
+/** El proveedor rechazó la consulta: reintentar no cambia el resultado. */
+export class OpenMeteoClientError extends NonRetryableError {
+  constructor(status: number) {
+    super(`Open-Meteo rechazó la consulta (HTTP ${status}).`);
+    this.name = 'OpenMeteoClientError';
+  }
+}
 
 /**
  * Circuit breaker para proteger las llamadas salientes a Open-Meteo (RNF-10).
  * Si falla 3 veces seguidas, se abre durante 30s evitando timeouts en el BFF.
+ * Los 4xx no cuentan como fallo (ver `NonRetryableError`).
  */
 export const openMeteoBreaker = new CircuitBreaker({
   name: 'Open-Meteo',
   failureThreshold: 3,
   resetTimeoutMs: 30_000,
+  onStateChange: ({ from, to, failures }) => {
+    console.warn(
+      `[circuit-breaker] Open-Meteo: ${from} -> ${to} (fallos consecutivos: ${failures})`,
+    );
+  },
 });
 
 interface PronosticoDia {
@@ -44,13 +58,14 @@ interface OpenMeteoApiResponse {
 }
 
 /**
- * Ejecuta una petición HTTP con timeout estricto y reintentos con espera exponencial (RNF-10).
+ * Ejecuta una petición HTTP y parsea el JSON dentro del mismo intento: así un
+ * body cortado a mitad de lectura también se reintenta y respeta el timeout.
  */
-async function fetchConReintentos(
+async function fetchJsonConReintentos<T>(
   url: string,
-  reintentosRestantes = MAX_REINTENTOS,
+  intento = 1,
   esperaMs = BACKOFF_INICIAL_MS,
-): Promise<Response> {
+): Promise<T> {
   try {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(TIMEOUT_POR_INTENTO_MS),
@@ -59,15 +74,15 @@ async function fetchConReintentos(
     if (!response.ok) {
       // Errores 4xx del cliente (ej. 400 por coordenadas fuera de rango) no son recuperables con reintento
       if (response.status >= 400 && response.status < 500) {
-        throw new Error(`Open-Meteo client error HTTP ${response.status}`);
+        throw new OpenMeteoClientError(response.status);
       }
-      throw new Error(`Open-Meteo server error HTTP ${response.status}`);
+      throw new Error(`Open-Meteo respondió con error de servidor (HTTP ${response.status}).`);
     }
 
-    return response;
+    return (await response.json()) as T;
   } catch (err) {
-    const esErrorCliente = err instanceof Error && err.message.includes('client error');
-    if (reintentosRestantes <= 1 || esErrorCliente) {
+    // Un 4xx no se reintenta y además no debe abrir el circuit breaker.
+    if (err instanceof NonRetryableError || intento >= MAX_INTENTOS) {
       throw err;
     }
 
@@ -75,7 +90,7 @@ async function fetchConReintentos(
     const jitter = Math.random() * 50;
     await new Promise((resolve) => setTimeout(resolve, esperaMs + jitter));
 
-    return fetchConReintentos(url, reintentosRestantes - 1, esperaMs * 2);
+    return fetchJsonConReintentos<T>(url, intento + 1, esperaMs * 2);
   }
 }
 
@@ -121,8 +136,9 @@ export async function obtenerPronostico(parcelaId: string): Promise<PronosticoRe
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto&forecast_days=7`;
 
   try {
-    const response = await openMeteoBreaker.execute(() => fetchConReintentos(url));
-    const data = (await response.json()) as OpenMeteoApiResponse;
+    const data = await openMeteoBreaker.execute(() =>
+      fetchJsonConReintentos<OpenMeteoApiResponse>(url),
+    );
 
     // 4. Transformar respuesta estandarizada
     const pronostico: PronosticoDia[] = data.daily.time.map((fecha, i) => ({

@@ -3,8 +3,8 @@ Objetivo: Implementar los mecanismos de resiliencia requeridos por el RNF-10 par
 
 ## Specs
 - S1 (Timeout por Request): Configurar un timeout máximo de 4.000 ms (`AbortSignal.timeout`) por petición HTTP a Open-Meteo, evitando hilos bloqueados ante degradación de red externa.
-- S2 (Reintentos con Espera Exponencial): Implementar hasta 3 intentos con backoff exponencial (300ms, 600ms, 1200ms) para errores transitorios de red, 5xx y timeouts. Los errores 4xx del cliente no se reintentan.
-- S3 (Patrón Circuit Breaker): Crear una clase/módulo reutilizable `CircuitBreaker` con estados `CLOSED`, `OPEN` y `HALF_OPEN`. Tras 3 fallos consecutivos, el circuito pasa a `OPEN` durante un periodo de enfriamiento de 30 segundos, activando fail-fast inmediato hacia la caché (`stale: true`).
+- S2 (Reintentos con Espera Exponencial): Implementar hasta 3 intentos (1 inicial + 2 reintentos) con backoff exponencial (300ms, 600ms) para errores transitorios de red, 5xx y timeouts. Los errores 4xx del cliente no se reintentan ni cuentan como fallo del circuito.
+- S3 (Patrón Circuit Breaker): Crear una clase/módulo reutilizable `CircuitBreaker` con estados `CLOSED`, `OPEN` y `HALF_OPEN`. Tras 3 fallos consecutivos, el circuito pasa a `OPEN` durante un periodo de enfriamiento de 30 segundos, activando fail-fast inmediato hacia la caché (`stale: true`). En `HALF_OPEN` se permite una única sonda en vuelo y cada transición se reporta por un hook `onStateChange` para dejar traza en logs.
 - S4 (Integración con openmeteo.ts): Integrar el circuit breaker en `obtenerPronostico(parcelaId)` manteniendo la lógica de centroide con Turf, actualización de caché en PostgreSQL y fallback suave ante caída externa.
 - S5 (Calidad y Verificación): `npm run lint` y `npm run build` sin errores en el BFF y monorepo.
 
@@ -17,3 +17,4 @@ Objetivo: Implementar los mecanismos de resiliencia requeridos por el RNF-10 par
 ## Log
 - L1 (2026-10-28): Creación de rama feature/rnf-10-resiliencia-climatica a partir de feature/crud-parcelas-edicion-eliminacion. Creación de especificación ODD.
 - L2 (2026-10-28): Implementación de CircuitBreaker y fetchConReintentos con AbortSignal.timeout(4000) y backoff exponencial en openmeteo.ts. Verificación de compilación y linters exitosa.
+- L3 (2026-11-04): Corrección tras review: los 4xx usan `OpenMeteoClientError` (extiende `NonRetryableError`) y ya no cuentan como fallo del circuito; `HALF_OPEN` limita a una sonda en vuelo; el parseo del body ocurre dentro del intento para que el timeout cubra la lectura; se agrega `onStateChange` para dejar traza de las transiciones.
