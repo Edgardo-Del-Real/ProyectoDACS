@@ -233,6 +233,49 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // GET /api/parcelas/:id - Obtener detalle completo de una parcela por ID (P4)
+  app.get<{ Params: { id: string } }>(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ['Parcelas'],
+        summary: 'Obtener detalle de una parcela por ID con su polígono GeoJSON (P4)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const { id } = request.params;
+
+      // Se proyectan solo los campos que el cliente necesita: nunca se expone
+      // `userId` ni columnas internas en la respuesta HTTP.
+      const parcela = await prisma.parcela.findFirst({
+        where: { id, userId },
+        select: {
+          id: true,
+          nombre: true,
+          poligono: true,
+          hectareas: true,
+          createdAt: true,
+        },
+      });
+
+      if (!parcela) {
+        return reply.code(404).send({ error: 'Parcela no encontrada' });
+      }
+
+      return parcela;
+    },
+  );
+
   // --- US-04: Historial de Campañas de la Parcela ---
 
   // GET /api/parcelas/:id/campanias - Listar historial ordenado por campaña
