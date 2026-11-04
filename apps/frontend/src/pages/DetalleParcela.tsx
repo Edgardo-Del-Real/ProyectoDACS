@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import type { Polygon } from 'geojson';
 import { MapaDetalleParcela } from '../components/MapaDetalleParcela';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { actualizarNombreParcela, eliminarParcela } from '../api/parcelas';
+import type { ParcelaDetalleResponse } from '../api/parcelas';
+import { ApiError } from '../api/http';
 
 interface PronosticoDia {
   fecha: string;
@@ -16,14 +19,6 @@ interface PronosticoResponse {
   pronostico: PronosticoDia[];
   stale: boolean;
   fetchedAt: string;
-}
-
-interface ParcelaDetalle {
-  id: string;
-  nombre: string | null;
-  poligono: Polygon;
-  hectareas: number;
-  createdAt: string;
 }
 
 interface Campania {
@@ -50,7 +45,7 @@ const CULTIVOS_COMUNES = [
 export function DetalleParcela() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [parcela, setParcela] = useState<ParcelaDetalle | null>(null);
+  const [parcela, setParcela] = useState<ParcelaDetalleResponse | null>(null);
   const [errorParcela, setErrorParcela] = useState<string | null>(null);
   const [pronostico, setPronostico] = useState<PronosticoResponse | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -61,6 +56,8 @@ export function DetalleParcela() {
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [guardandoNombre, setGuardandoNombre] = useState(false);
   const [eliminandoParcela, setEliminandoParcela] = useState(false);
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
 
   // Estado para Historial de Campañas (US-04)
   const [campanias, setCampanias] = useState<Campania[]>([]);
@@ -138,7 +135,7 @@ export function DetalleParcela() {
         setPronostico(dataClima);
 
         if (resParcela.ok) {
-          const dataParcela: ParcelaDetalle = await resParcela.json();
+          const dataParcela: ParcelaDetalleResponse = await resParcela.json();
           setParcela(dataParcela);
           setErrorParcela(null);
         } else if (resParcela.status === 401) {
@@ -165,61 +162,37 @@ export function DetalleParcela() {
     e.preventDefault();
     if (!id || !nuevoNombre.trim()) return;
 
-    const token = getToken();
-    if (!token) return;
-
     setGuardandoNombre(true);
+    setErrorAccion(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ nombre: nuevoNombre.trim() }),
-      });
-
-      if (!res.ok) {
-        throw new Error('Error al actualizar el nombre de la parcela');
-      }
-
-      const actualizada = await res.json();
+      const actualizada = await actualizarNombreParcela(id, nuevoNombre.trim());
       setParcela((prev) => (prev ? { ...prev, nombre: actualizada.nombre } : null));
       setPronostico((prev) => (prev ? { ...prev, parcelaNombre: actualizada.nombre } : null));
       setEditandoNombre(false);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al guardar');
+      setErrorAccion(
+        err instanceof ApiError ? err.message : 'No se pudo guardar el nombre de la parcela.',
+      );
     } finally {
       setGuardandoNombre(false);
     }
   };
 
-  // Eliminar parcela (US-01 / E2)
+  // Eliminar parcela (US-01 / E2): el diálogo confirma, esto ejecuta.
   const handleEliminarParcela = async () => {
-    const nombreActual = parcela?.nombre || pronostico?.parcelaNombre || 'esta parcela';
-    const confirmacion = confirm(
-      `¿Estás seguro de que deseás eliminar la parcela "${nombreActual}"?\n\nEsta acción no se puede deshacer y borrará también el historial de campañas registrado en el lote.`,
-    );
-    if (!confirmacion || !id) return;
-
-    const token = getToken();
-    if (!token) return;
+    if (!id) return;
 
     setEliminandoParcela(true);
+    setErrorAccion(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parcelas/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) {
-        throw new Error('No se pudo eliminar la parcela');
-      }
-
+      await eliminarParcela(id);
       navigate('/panel');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al eliminar la parcela');
+      setErrorAccion(
+        err instanceof ApiError ? err.message : 'No se pudo eliminar la parcela.',
+      );
       setEliminandoParcela(false);
+      setConfirmandoEliminar(false);
     }
   };
 
@@ -424,7 +397,10 @@ export function DetalleParcela() {
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
             type="button"
-            onClick={handleEliminarParcela}
+            onClick={() => {
+              setErrorAccion(null);
+              setConfirmandoEliminar(true);
+            }}
             disabled={eliminandoParcela}
             className="px-3.5 py-2 text-xs sm:text-sm font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-xl transition"
           >
@@ -438,6 +414,17 @@ export function DetalleParcela() {
           </Link>
         </div>
       </div>
+
+      {/* Error de la última acción sobre la parcela (renombrar / eliminar) */}
+      {errorAccion && (
+        <div
+          role="alert"
+          className="rounded-xl p-4 bg-red-50 border border-red-200 text-red-800 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg">⚠️</span>
+          <p className="font-medium">{errorAccion}</p>
+        </div>
+      )}
 
       {/* Alerta de datos desactualizados */}
       {pronostico.stale && (
@@ -708,6 +695,18 @@ export function DetalleParcela() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmandoEliminar}
+        tone="danger"
+        title="Eliminar parcela"
+        description={`¿Eliminás la parcela "${parcela?.nombre || pronostico.parcelaNombre || 'seleccionada'}"?\n\nEsta acción no se puede deshacer y borrará también el historial de campañas registrado en el lote.`}
+        confirmLabel="Eliminar"
+        cancelLabel="Conservar parcela"
+        busy={eliminandoParcela}
+        onConfirm={handleEliminarParcela}
+        onCancel={() => setConfirmandoEliminar(false)}
+      />
     </div>
   );
 }
