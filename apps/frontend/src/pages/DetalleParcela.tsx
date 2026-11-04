@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { PlanRotacion } from '../components/PlanRotacion';
 
 interface PronosticoDia {
   fecha: string;
@@ -28,13 +29,12 @@ interface Campania {
 const CULTIVOS_COMUNES = [
   'Soja 1ra',
   'Soja 2da',
-  'Maíz temprano',
   'Maíz tardío',
-  'Trigo',
+  'Maíz temprano',
+  'Trigo pan',
   'Girasol',
-  'Cebada',
-  'Sorgo',
-  'Pastura / Barbecho',
+  'Sorgo granífero',
+  'Cebada cervecera',
 ];
 
 export function DetalleParcela() {
@@ -42,13 +42,14 @@ export function DetalleParcela() {
   const [pronostico, setPronostico] = useState<PronosticoResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [revisionPlan, setRevisionPlan] = useState(0);
 
   // Estado para Historial de Campañas (US-04)
   const [campanias, setCampanias] = useState<Campania[]>([]);
   const [cargandoCampanias, setCargandoCampanias] = useState(false);
   const [mostrarFormCampania, setMostrarFormCampania] = useState(false);
   const [cultivo, setCultivo] = useState(CULTIVOS_COMUNES[0]);
-  const [campania, setCampania] = useState('2024/2025');
+  const [campania, setCampania] = useState('2025/2026');
   const [rindeReal, setRindeReal] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [guardandoCampania, setGuardandoCampania] = useState(false);
@@ -168,6 +169,7 @@ export function DetalleParcela() {
       setRindeReal('');
       setObservaciones('');
       setMostrarFormCampania(false);
+      setRevisionPlan((revision) => revision + 1);
       await cargarCampanias();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo guardar la campaña';
@@ -197,26 +199,30 @@ export function DetalleParcela() {
         throw new Error('Error al eliminar');
       }
 
+      setRevisionPlan((revision) => revision + 1);
       await cargarCampanias();
     } catch {
       alert('No se pudo eliminar el registro de campaña');
     }
   };
 
+  const planRotacion = id ? <PlanRotacion key={id} id={id} revision={revisionPlan} /> : null;
+
   if (cargando) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center space-y-3">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-emerald-600"></div>
           <p className="text-slate-600 text-sm font-medium">Cargando datos de la parcela...</p>
         </div>
+        {planRotacion}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-4">
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-red-200 shadow-sm space-y-4">
           <div className="flex items-center gap-3 text-red-600">
             <span className="text-2xl">⚠️</span>
@@ -234,13 +240,14 @@ export function DetalleParcela() {
             </Link>
           </div>
         </div>
+        {planRotacion}
       </div>
     );
   }
 
   if (!pronostico) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-4">
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm text-center space-y-4">
           <p className="text-slate-600 text-base font-medium">No se encontró la parcela solicitada.</p>
           <div>
@@ -252,6 +259,7 @@ export function DetalleParcela() {
             </Link>
           </div>
         </div>
+        {planRotacion}
       </div>
     );
   }
@@ -518,6 +526,9 @@ export function DetalleParcela() {
           </div>
         )}
       </div>
+
+      {/* --- SECCIÓN 3: PLAN DE ROTACIÓN PLURIANUAL (US-09) --- */}
+      {planRotacion}
     </div>
   );
 }

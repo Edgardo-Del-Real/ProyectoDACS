@@ -55,6 +55,7 @@ interface ReglaSeed {
 }
 
 const REGLAS_ROTACION_BASE: ReglaSeed[] = [
+  // Transiciones recomendadas entre distintas familias botánicas (aniosEsperaMin = 0)
   {
     cultivoAnterior: 'Soja 1ra',
     cultivoSiguiente: 'Maíz tardío',
@@ -72,36 +73,28 @@ const REGLAS_ROTACION_BASE: ReglaSeed[] = [
     prioridadSugerencia: 4,
   },
   {
+    cultivoAnterior: 'Soja 1ra',
+    cultivoSiguiente: 'Sorgo granífero',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'Aporta abundante biomasa aérea y radicular tras leguminosa, recomponiendo la relación C/N y la estabilidad estructural en lotes con restricción hídrica.',
+    prioridadSugerencia: 4,
+  },
+  {
+    cultivoAnterior: 'Soja 1ra',
+    cultivoSiguiente: 'Cebada cervecera',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'Cereal invernal que provee cobertura viva temprana sobre el rastrojo escaso de la soja, protegiendo el suelo de la erosión y liberando temprano el lote.',
+    prioridadSugerencia: 3,
+  },
+  {
     cultivoAnterior: 'Maíz tardío',
     cultivoSiguiente: 'Soja 1ra',
     aniosEsperaMin: 0,
     efectoSuelo:
       'Aprovecha el rastrojo denso del maíz como cobertura superficial y aporta nitrógeno al suelo mediante fijación biológica simbiótica de bacterias Rhizobium.',
     prioridadSugerencia: 5,
-  },
-  {
-    cultivoAnterior: 'Trigo pan',
-    cultivoSiguiente: 'Soja 1ra',
-    aniosEsperaMin: 0,
-    efectoSuelo:
-      'Rotación tradicional intensiva pampeana. Alterna especies con diferente profundidad de arraigo y optimiza la eficiencia de uso del agua.',
-    prioridadSugerencia: 4,
-  },
-  {
-    cultivoAnterior: 'Soja 1ra',
-    cultivoSiguiente: 'Soja 1ra',
-    aniosEsperaMin: 1,
-    efectoSuelo:
-      'Desaconsejada por INTA: el monocultivo de leguminosas agota el fósforo disponible, acidifica el horizonte superficial y propicia patógenos de raíz (Fusarium, Macrophomina).',
-    prioridadSugerencia: 1,
-  },
-  {
-    cultivoAnterior: 'Girasol',
-    cultivoSiguiente: 'Maíz tardío',
-    aniosEsperaMin: 0,
-    efectoSuelo:
-      'El maíz compensa el escaso residuo que deja el girasol, evitando el encostramiento de suelos limosos y mejorando la materia orgánica.',
-    prioridadSugerencia: 4,
   },
   {
     cultivoAnterior: 'Maíz tardío',
@@ -112,12 +105,136 @@ const REGLAS_ROTACION_BASE: ReglaSeed[] = [
     prioridadSugerencia: 3,
   },
   {
+    cultivoAnterior: 'Trigo pan',
+    cultivoSiguiente: 'Soja 1ra',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'Rotación tradicional intensiva pampeana. Alterna especies con diferente profundidad de arraigo y optimiza la eficiencia de uso del agua.',
+    prioridadSugerencia: 5,
+  },
+  {
+    cultivoAnterior: 'Trigo pan',
+    cultivoSiguiente: 'Girasol',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'El rastrojo fibroso del trigo protege la superficie mientras la raíz pivotante del girasol descompacta el subsuelo y recicla nutrientes.',
+    prioridadSugerencia: 3,
+  },
+  {
+    cultivoAnterior: 'Girasol',
+    cultivoSiguiente: 'Maíz tardío',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'El maíz compensa el escaso residuo que deja el girasol, evitando el encostramiento de suelos limosos y mejorando la materia orgánica.',
+    prioridadSugerencia: 5,
+  },
+  {
+    cultivoAnterior: 'Girasol',
+    cultivoSiguiente: 'Trigo pan',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'La liberación temprana del lote por el girasol facilita la recarga del perfil y la implantación otoñal del trigo para restituir cobertura.',
+    prioridadSugerencia: 4,
+  },
+  {
+    cultivoAnterior: 'Girasol',
+    cultivoSiguiente: 'Sorgo granífero',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'Repone rápidamente carbono orgánico y rastrojo persistente luego de una oleaginosa de baja cobertura residual.',
+    prioridadSugerencia: 4,
+  },
+  {
     cultivoAnterior: 'Sorgo granífero',
     cultivoSiguiente: 'Soja 1ra',
     aniosEsperaMin: 0,
     efectoSuelo:
       'Alta tolerancia al estrés térmico e hídrico; deja una masa radicular muy densa que reconstituye la estabilidad de los agregados del suelo.',
+    prioridadSugerencia: 5,
+  },
+  {
+    cultivoAnterior: 'Cebada cervecera',
+    cultivoSiguiente: 'Soja 1ra',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'Libera temprano el lote en primavera con buena cobertura fibrosa superficial, favoreciendo la captación de agua e implantación de la leguminosa.',
     prioridadSugerencia: 4,
+  },
+  {
+    cultivoAnterior: 'Cebada cervecera',
+    cultivoSiguiente: 'Girasol',
+    aniosEsperaMin: 0,
+    efectoSuelo:
+      'Alterna raíces fasciculadas superficiales de invierno con raíz pivotante profunda estival, diversificando familias botánicas.',
+    prioridadSugerencia: 3,
+  },
+
+  // Restricciones sanitarias por patógenos polífagos compartidos entre familias (Sclerotinia sclerotiorum)
+  {
+    cultivoAnterior: 'Soja 1ra',
+    cultivoSiguiente: 'Girasol',
+    aniosEsperaMin: 1,
+    efectoSuelo:
+      'Desaconsejada en campañas consecutivas: Soja y Girasol comparten susceptibilidad a Sclerotinia sclerotiorum (moho blanco / podredumbre húmeda) y ambos dejan escaso rastrojo. Intercalar al menos 1 campaña de gramínea.',
+    prioridadSugerencia: 1,
+  },
+  {
+    cultivoAnterior: 'Girasol',
+    cultivoSiguiente: 'Soja 1ra',
+    aniosEsperaMin: 1,
+    efectoSuelo:
+      'Desaconsejada en campañas consecutivas: ambos cultivos son hospedantes de Sclerotinia sclerotiorum (moho blanco) y aportan baja cobertura de rastrojo. Intercalar una gramínea antes de implantar soja.',
+    prioridadSugerencia: 1,
+  },
+
+  // Reglas de espera para repetir la misma familia botánica (US-09 Criterio 2 / INTA)
+  {
+    cultivoAnterior: 'Soja 1ra',
+    cultivoSiguiente: 'Soja 1ra',
+    aniosEsperaMin: 1,
+    efectoSuelo:
+      'Desaconsejada por INTA: el monocultivo de leguminosas agota el fósforo disponible, acidifica el horizonte superficial y propicia patógenos de raíz (Fusarium, Macrophomina).',
+    prioridadSugerencia: 1,
+  },
+  {
+    cultivoAnterior: 'Girasol',
+    cultivoSiguiente: 'Girasol',
+    aniosEsperaMin: 3,
+    efectoSuelo:
+      'Desaconsejada por INTA: requiere al menos 3 campañas de espera sin Asteráceas en el lote para cortar el ciclo de hongos de suelo (Sclerotinia sclerotiorum y Verticillium).',
+    prioridadSugerencia: 1,
+  },
+  {
+    cultivoAnterior: 'Maíz tardío',
+    cultivoSiguiente: 'Maíz tardío',
+    aniosEsperaMin: 1,
+    efectoSuelo:
+      'Se recomienda esperar al menos 1 campaña y alternar con otra familia botánica para evitar la inmovilización de nitrógeno y cortar ciclos de plagas e insectos de suelo.',
+    prioridadSugerencia: 1,
+  },
+  {
+    cultivoAnterior: 'Trigo pan',
+    cultivoSiguiente: 'Trigo pan',
+    aniosEsperaMin: 1,
+    efectoSuelo:
+      'Se recomienda esperar al menos 1 campaña antes de repetir gramíneas invernales para cortar el ciclo de manchas foliares y fusariosis de la espiga.',
+    prioridadSugerencia: 1,
+  },
+  {
+    cultivoAnterior: 'Sorgo granífero',
+    cultivoSiguiente: 'Sorgo granífero',
+    aniosEsperaMin: 1,
+    efectoSuelo:
+      'Se recomienda alternar con leguminosas para reponer nitrógeno disponible tras la alta demanda por descomposición del rastrojo de sorgo.',
+    prioridadSugerencia: 1,
+  },
+  {
+    cultivoAnterior: 'Cebada cervecera',
+    cultivoSiguiente: 'Cebada cervecera',
+    aniosEsperaMin: 1,
+    efectoSuelo:
+      'Se recomienda esperar al menos 1 campaña y rotar con otra familia botánica para prevenir enfermedades necrotróficas de rastrojo (mancha en red y escaldadura).',
+    prioridadSugerencia: 1,
   },
 ];
 
