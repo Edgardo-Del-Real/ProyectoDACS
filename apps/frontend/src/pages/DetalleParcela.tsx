@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import type { Polygon } from 'geojson';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { MapaDetalleParcela } from '../components/MapaDetalleParcela';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { actualizarNombreParcela, eliminarParcela } from '../api/parcelas';
+import type { ParcelaDetalleResponse } from '../api/parcelas';
+import { ApiError } from '../api/http';
 
 interface PronosticoDia {
   fecha: string;
@@ -16,14 +19,6 @@ interface PronosticoResponse {
   pronostico: PronosticoDia[];
   stale: boolean;
   fetchedAt: string;
-}
-
-interface ParcelaDetalle {
-  id: string;
-  nombre: string | null;
-  poligono: Polygon;
-  hectareas: number;
-  createdAt: string;
 }
 
 interface Campania {
@@ -49,11 +44,20 @@ const CULTIVOS_COMUNES = [
 
 export function DetalleParcela() {
   const { id } = useParams<{ id: string }>();
-  const [parcela, setParcela] = useState<ParcelaDetalle | null>(null);
+  const navigate = useNavigate();
+  const [parcela, setParcela] = useState<ParcelaDetalleResponse | null>(null);
   const [errorParcela, setErrorParcela] = useState<string | null>(null);
   const [pronostico, setPronostico] = useState<PronosticoResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Estado para edición y eliminación de la parcela
+  const [editandoNombre, setEditandoNombre] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [guardandoNombre, setGuardandoNombre] = useState(false);
+  const [eliminandoParcela, setEliminandoParcela] = useState(false);
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
 
   // Estado para Historial de Campañas (US-04)
   const [campanias, setCampanias] = useState<Campania[]>([]);
@@ -131,7 +135,7 @@ export function DetalleParcela() {
         setPronostico(dataClima);
 
         if (resParcela.ok) {
-          const dataParcela: ParcelaDetalle = await resParcela.json();
+          const dataParcela: ParcelaDetalleResponse = await resParcela.json();
           setParcela(dataParcela);
           setErrorParcela(null);
         } else if (resParcela.status === 401) {
@@ -152,6 +156,45 @@ export function DetalleParcela() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     cargarCampanias();
   }, [id, cargarCampanias]);
+
+  // Actualizar nombre de la parcela (US-01 / E2)
+  const handleActualizarNombre = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !nuevoNombre.trim()) return;
+
+    setGuardandoNombre(true);
+    setErrorAccion(null);
+    try {
+      const actualizada = await actualizarNombreParcela(id, nuevoNombre.trim());
+      setParcela((prev) => (prev ? { ...prev, nombre: actualizada.nombre } : null));
+      setPronostico((prev) => (prev ? { ...prev, parcelaNombre: actualizada.nombre } : null));
+      setEditandoNombre(false);
+    } catch (err) {
+      setErrorAccion(
+        err instanceof ApiError ? err.message : 'No se pudo guardar el nombre de la parcela.',
+      );
+    } finally {
+      setGuardandoNombre(false);
+    }
+  };
+
+  // Eliminar parcela (US-01 / E2): el diálogo confirma, esto ejecuta.
+  const handleEliminarParcela = async () => {
+    if (!id) return;
+
+    setEliminandoParcela(true);
+    setErrorAccion(null);
+    try {
+      await eliminarParcela(id);
+      navigate('/panel');
+    } catch (err) {
+      setErrorAccion(
+        err instanceof ApiError ? err.message : 'No se pudo eliminar la parcela.',
+      );
+      setEliminandoParcela(false);
+      setConfirmandoEliminar(false);
+    }
+  };
 
   // US-04 Criterio 1: Registrar cultivo en una campaña
   const handleGuardarCampania = async (e: React.FormEvent) => {
@@ -282,9 +325,9 @@ export function DetalleParcela() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-6">
-      {/* Header de Parcela */}
+      {/* Header de Parcela con Edición y Eliminación */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div>
+        <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <Link
               to="/panel"
@@ -293,9 +336,52 @@ export function DetalleParcela() {
               ← Volver al panel
             </Link>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
-            {parcela?.nombre || pronostico.parcelaNombre || 'Detalle de Parcela'}
-          </h1>
+
+          {editandoNombre ? (
+            <form onSubmit={handleActualizarNombre} className="flex flex-wrap items-center gap-2 mt-2">
+              <input
+                type="text"
+                required
+                value={nuevoNombre}
+                onChange={(e) => setNuevoNombre(e.target.value)}
+                className="px-3 py-1.5 text-base sm:text-xl font-bold text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Nombre del lote"
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={guardandoNombre || !nuevoNombre.trim()}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-semibold rounded-xl shadow-sm transition"
+              >
+                {guardandoNombre ? 'Guardando...' : 'Guardar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditandoNombre(false)}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-xl transition"
+              >
+                Cancelar
+              </button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
+                {parcela?.nombre || pronostico.parcelaNombre || 'Detalle de Parcela'}
+              </h1>
+              <button
+                type="button"
+                onClick={() => {
+                  setNuevoNombre(parcela?.nombre || pronostico?.parcelaNombre || '');
+                  setEditandoNombre(true);
+                }}
+                title="Editar nombre de la parcela"
+                className="text-xs text-slate-500 hover:text-emerald-700 p-1.5 rounded-lg hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition"
+              >
+                ✏️ Editar
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2 mt-2">
             <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
               ID: {pronostico.parcelaId}
@@ -307,15 +393,38 @@ export function DetalleParcela() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setErrorAccion(null);
+              setConfirmandoEliminar(true);
+            }}
+            disabled={eliminandoParcela}
+            className="px-3.5 py-2 text-xs sm:text-sm font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-xl transition"
+          >
+            {eliminandoParcela ? 'Eliminando...' : '🗑️ Eliminar parcela'}
+          </button>
           <Link
             to="/panel"
-            className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl text-center transition"
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl text-center transition"
           >
-            Ver todas las parcelas
+            Ver todas
           </Link>
         </div>
       </div>
+
+      {/* Error de la última acción sobre la parcela (renombrar / eliminar) */}
+      {errorAccion && (
+        <div
+          role="alert"
+          className="rounded-xl p-4 bg-red-50 border border-red-200 text-red-800 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg">⚠️</span>
+          <p className="font-medium">{errorAccion}</p>
+        </div>
+      )}
 
       {/* Alerta de datos desactualizados */}
       {pronostico.stale && (
@@ -586,6 +695,18 @@ export function DetalleParcela() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmandoEliminar}
+        tone="danger"
+        title="Eliminar parcela"
+        description={`¿Eliminás la parcela "${parcela?.nombre || pronostico.parcelaNombre || 'seleccionada'}"?\n\nEsta acción no se puede deshacer y borrará también el historial de campañas registrado en el lote.`}
+        confirmLabel="Eliminar"
+        cancelLabel="Conservar parcela"
+        busy={eliminandoParcela}
+        onConfirm={handleEliminarParcela}
+        onCancel={() => setConfirmandoEliminar(false)}
+      />
     </div>
   );
 }
