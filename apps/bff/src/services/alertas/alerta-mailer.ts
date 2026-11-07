@@ -221,6 +221,10 @@ export class AlertaEmailService {
       return;
     }
 
+    if (!this.transporter) {
+      this.inicializarTransporter();
+    }
+
     if (this.transporter) {
       const from =
         process.env.SMTP_FROM ||

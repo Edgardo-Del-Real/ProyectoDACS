@@ -47,13 +47,6 @@ services:
       DATABASE_URL: "postgres://dacs:dacs@db:5432/dacs"
       RABBITMQ_URL: "amqp://dacs:dacs@broker:5672"
       JWT_SECRET: "${JWT_SECRET:-dev-only-jwt-secret-change-me}"
-      SMTP_HOST: "${SMTP_HOST:-}"
-      SMTP_PORT: "${SMTP_PORT:-587}"
-      SMTP_SECURE: "${SMTP_SECURE:-false}"
-      SMTP_USER: "${SMTP_USER:-}"
-      SMTP_PASS: "${SMTP_PASS:-}"
-      SMTP_SERVICE: "${SMTP_SERVICE:-}"
-      SMTP_FROM: "${SMTP_FROM:-ProyectoDACS Alertas <alertas@proyectodacs.com>}"
     command: sh -c "npm install --no-audit --no-fund && npm run dev --workspace @proyectodacs/bff"
     depends_on:
       db:

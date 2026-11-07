@@ -245,7 +245,7 @@ export const PanelAlertas: React.FC<PanelAlertasProps> = ({
       {resumen.total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 font-medium">
+            <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-900 border border-sky-200 font-medium">
               ❄️ Heladas: <strong>{resumen.heladas}</strong>
             </span>
             <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-medium">
@@ -324,11 +324,11 @@ export const PanelAlertas: React.FC<PanelAlertasProps> = ({
           {alertasVisibles.map((alerta) => {
             const esHelada = alerta.tipo === 'HELADA';
             const cardClasses = esHelada
-              ? 'border-sky-200 bg-sky-50/60'
-              : 'border-amber-200 bg-amber-50/60';
+              ? 'border-sky-500 bg-sky-200/40'
+              : 'border-amber-500 bg-amber-50/60';
             const badgeClasses = esHelada
-              ? 'bg-sky-100 text-sky-900 border-sky-200'
-              : 'bg-amber-100 text-amber-900 border-amber-200';
+              ? 'bg-sky-200 text-sky-900 border-sky-400'
+              : 'bg-amber-100 text-amber-900 border-amber-300';
 
             return (
               <div

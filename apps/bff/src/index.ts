@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { setupSwagger } from './plugins/swagger.js';
@@ -10,6 +12,21 @@ import { mercadoRoutes } from './routes/mercado.js';
 import { alertasRoutes } from './routes/alertas.js';
 import { healthRoutes } from './routes/health.js';
 import { iniciarWorkerAlertas } from './services/alertas/alertas.js';
+
+// Cargar variables de entorno desde .env si process.loadEnvFile existe en Node
+if (typeof process.loadEnvFile === 'function') {
+  for (const rutaEnv of [
+    resolve(process.cwd(), 'apps/bff/.env'),
+  ]) {
+    if (existsSync(rutaEnv)) {
+      try {
+        process.loadEnvFile(rutaEnv);
+      } catch {
+        // Ignorar si ya fue cargado o no se puede leer
+      }
+    }
+  }
+}
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? '0.0.0.0';
