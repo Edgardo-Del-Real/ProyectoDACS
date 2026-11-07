@@ -23,7 +23,7 @@ export function getToken(): string | null {
 }
 
 interface ApiRequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   body?: unknown;
   signal?: AbortSignal;
 }

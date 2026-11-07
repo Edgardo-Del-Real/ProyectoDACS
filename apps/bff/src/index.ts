@@ -7,7 +7,9 @@ import { parcelasRoutes } from './routes/parcelas.js';
 import { climaRoutes } from './routes/clima.js';
 import { rotacionRoutes } from './routes/rotacion.js';
 import { mercadoRoutes } from './routes/mercado.js';
+import { alertasRoutes } from './routes/alertas.js';
 import { healthRoutes } from './routes/health.js';
+import { iniciarWorkerAlertas } from './services/alertas/alertas.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -18,11 +20,11 @@ const app = Fastify({ logger: true });
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
   : [
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-    ];
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ];
 
 await app.register(cors, {
   origin: (origin, cb) => {
@@ -69,6 +71,14 @@ await app.register(rotacionRoutes, { prefix: '/api/parcelas' });
 
 // Rutas de cotizaciones de mercado y futuros (US-07)
 await app.register(mercadoRoutes, { prefix: '/api/mercado' });
+
+// Rutas de alertas climáticas y estrés hídrico (US-06)
+await app.register(alertasRoutes, { prefix: '/api/alertas' });
+
+const detenerWorkerAlertas = iniciarWorkerAlertas(app.log);
+app.addHook('onClose', async () => {
+  detenerWorkerAlertas();
+});
 
 try {
   await app.listen({ port: PORT, host: HOST });

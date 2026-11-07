@@ -12,6 +12,14 @@ enum RolUsuario {
   TECNICO
 }
 
+enum TipoAlerta {
+  HELADA
+  SEQUIA
+  SIEMBRA
+  COSECHA
+  PRECIO
+}
+
 model Usuario {
   id           String      @id @default(cuid())
   email        String      @unique
@@ -21,6 +29,7 @@ model Usuario {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   parcelas     Parcela[]
+  alertas      Alerta[]
 }
 
 model Parcela {
@@ -36,6 +45,7 @@ model Parcela {
   usuario    Usuario           @relation(fields: [userId], references: [id], onDelete: Cascade)
   campanias  CampaniaCultivo[]
   pronostico PronosticoClima?
+  alertas    Alerta[]
 
   @@index([userId])
 }
@@ -126,4 +136,28 @@ model ParametroEconomico {
   updatedAt         DateTime @updatedAt
 
   @@index([cultivo])
+}
+
+// Registro de alertas tempranas de heladas y estrés hídrico por parcela (US-06).
+// La restricción única (parcelaId, tipo, fechaEvento) garantiza deduplicación idempotente.
+model Alerta {
+  id             String     @id @default(cuid())
+  userId         String
+  parcelaId      String
+  tipo           TipoAlerta
+  fechaEvento    String     // Fecha ISO YYYY-MM-DD del evento previsto
+  valorDetectado Float      // Temp mínima (°C) para HELADA o precipitación acumulada (mm) para SEQUIA
+  umbral         Float      // Umbral evaluado (ej: 0 °C o 10 mm)
+  mensaje        String     // Descripción legible para el panel y el email
+  emailEnviado   Boolean    @default(false)
+  enviadoAt      DateTime?
+  leida          Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+
+  usuario        Usuario    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parcela        Parcela    @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+
+  @@unique([parcelaId, tipo, fechaEvento])
+  @@index([userId, createdAt])
+  @@index([parcelaId])
 }
