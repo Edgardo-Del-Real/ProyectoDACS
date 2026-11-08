@@ -42,6 +42,7 @@ export const alertasRoutes: FastifyPluginAsync = async (app) => {
         },
         response: {
           401: errorSchema,
+          404: errorSchema,
           500: errorSchema,
         },
       },
@@ -187,6 +188,7 @@ export const alertasRoutes: FastifyPluginAsync = async (app) => {
         security: [{ bearerAuth: [] }],
         response: {
           401: errorSchema,
+          404: errorSchema,
           500: errorSchema,
         },
       },
