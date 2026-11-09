@@ -35,3 +35,35 @@
 - **Decisión:** Tailwind para layout/shell/tarjetas. No entra en este esqueleto, queda para Paso 1.
 - **Por qué:** velocidad para `/parcelas` y `/panel` con mapa.
 - **Si muta:** si la cátedra pide CSS Modules, se limita a `apps/frontend` sin tocar BFF/Compose.
+
+---
+
+## Actualización 2026-11-09
+
+Registro del estado de implementación de cada decisión al commit `46786e3`. Las secciones D1–D6
+de arriba se conservan como registro histórico: no se reescriben.
+
+| Decisión | Estado | Detalle |
+| -------- | ------ | ------- |
+| **D1 — BFF con Fastify** | Implementada | `apps/bff` corre Fastify 5.12 con los plugins `@fastify/jwt`, `@fastify/cors`, `@fastify/swagger` y `@fastify/swagger-ui`. Health y readiness en `/health`, `/api/health`, `/ready`, `/api/ready`. |
+| **D2 — Prisma + Postgres** | Implementada, con ajustes | Prisma 7.10 sobre PostgreSQL 16 + PostGIS 3.4, con `@prisma/adapter-pg` y `pg`. El schema creció a `Usuario`, `Parcela`, `CampaniaCultivo`, `PronosticoClima`, `Precio`, `Cultivo`, `ReglaRotacion` y `ParametroEconomico`. Cuatro migraciones aplicadas y seed de catálogos agronómicos. El polígono sigue como GeoJSON en `Json` y las áreas se calculan con Turf. |
+| **D3 — RabbitMQ para jobs async** | **No implementada** | El servicio `broker` está en `docker-compose.yml` y el contenedor levanta, pero **no hay dependencia de cliente AMQP ni código que publique o consuma mensajes**. `RABBITMQ_URL` figura en `apps/bff/.env.example` y en el compose, y ningún módulo la lee. |
+| **D4 — Granularidad en 3–4 servicios** | **No iniciada** | No existen `services/` ni `packages/`. El BFF es un monolito que concentra todo el dominio; el motor de rotación vive en `apps/bff/src/services/rotacion.ts` (≈28 KB). |
+| **D5 — Precios US-02 con ambas fuentes** | Pendiente | La rama `feature/KAN-33-mercado-cotizaciones-futuros` **no está mergeada**. Existe el modelo `Precio` en el schema, pero no hay worker, cliente de Remarkets ni scraping. El modelo `Precio` no equivale a funcionalidad entregada. |
+| **D6 — Estilos con Tailwind** | Implementada | Tailwind CSS 3.4 en `apps/frontend`, usado en layout, dashboard, parcelas y detalle. |
+
+### Preguntas abiertas (no son decisiones tomadas)
+
+1. **Microservicios:** ¿cuándo se separa el BFF y con qué granularidad? D4 sigue siendo una
+   intención, no un plan ejecutado.
+2. **US-02:** ¿Remarkets, scraping de la Bolsa o ambos? La decisión original (D5) no se validó
+   contra una fuente concreta ni se implementó.
+3. **RabbitMQ:** ¿se implementa para jobs async o se retira del compose? Hoy es infraestructura
+   declarada sin consumidor.
+4. **Deploy de producción:** no hay plataforma, proceso de migraciones ni gestión de secretos
+   definidos.
+5. **Testing:** ¿se incorpora un runner al frontend y pruebas end-to-end en CI? Hoy el BFF tiene
+   solo dos suites (`rotacion.test.ts`, `circuit-breaker.test.ts`) y la SPA no tiene tests.
+6. **Entorno:** ¿qué esquema de archivos `.env` se adopta? Los `env.development` y
+   `env.production` de la raíz están mal ubicados, incluyen `/api` en `VITE_API_URL` y no están
+   cubiertos por `.gitignore`.
