@@ -29,6 +29,15 @@ function formatearFechaEvento(fechaIso: string): string {
   return fechaIso;
 }
 
+function derivarResumenDeAlertas(lista: AlertaItem[]): ResumenAlertas {
+  return {
+    total: lista.length,
+    noLeidas: lista.filter((a) => !a.leida).length,
+    heladas: lista.filter((a) => a.tipo === 'HELADA').length,
+    sequias: lista.filter((a) => a.tipo === 'SEQUIA').length,
+  };
+}
+
 export const PanelAlertas: React.FC<PanelAlertasProps> = ({
   parcelaId,
   tieneParcelas = true,
@@ -129,13 +138,11 @@ export const PanelAlertas: React.FC<PanelAlertasProps> = ({
     setActualizandoId(alerta.id);
     try {
       const actualizada = await actualizarAlertaLeida(alerta.id, !alerta.leida);
-      setAlertas((prev) => prev.map((a) => (a.id === alerta.id ? actualizada : a)));
-      setResumen((prev) => ({
-        ...prev,
-        noLeidas: actualizada.leida
-          ? Math.max(0, prev.noLeidas - 1)
-          : prev.noLeidas + 1,
-      }));
+      setAlertas((prev) => {
+        const actualizadas = prev.map((a) => (a.id === alerta.id ? actualizada : a));
+        setResumen(derivarResumenDeAlertas(actualizadas));
+        return actualizadas;
+      });
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : 'No se pudo actualizar el estado de la alerta.',
@@ -169,7 +176,11 @@ export const PanelAlertas: React.FC<PanelAlertasProps> = ({
     setFeedbackVerificacion(null);
     try {
       const res = await reenviarEmailAlerta(alerta.id);
-      setAlertas((prev) => prev.map((a) => (a.id === alerta.id ? res.alerta : a)));
+      setAlertas((prev) => {
+        const actualizadas = prev.map((a) => (a.id === alerta.id ? res.alerta : a));
+        setResumen(derivarResumenDeAlertas(actualizadas));
+        return actualizadas;
+      });
       setFeedbackVerificacion(`✅ ${res.mensaje}`);
     } catch (err) {
       setError(

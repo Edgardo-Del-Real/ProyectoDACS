@@ -4,6 +4,7 @@ import {
   AlertaEmailService,
   alertaEmailService,
   construirEmailAlerta,
+  escaparHtml,
   type EmailAlertaPayload,
   type EmailSender,
   type TipoAlertaClimatica,
@@ -13,6 +14,7 @@ export {
   AlertaEmailService,
   alertaEmailService,
   construirEmailAlerta,
+  escaparHtml,
   type EmailAlertaPayload,
   type EmailSender,
   type TipoAlertaClimatica,
@@ -29,11 +31,55 @@ export interface UmbralesAlerta {
   ventanaDedupeSequiaDias: number;
 }
 
+/**
+ * Lectura lazy de los umbrales climáticos configurados por variables de entorno (Bloqueante 3).
+ * Evita evaluar process.env al cargar el módulo antes de que se cargue el archivo .env.
+ */
+export function obtenerUmbralesPorDefecto(): UmbralesAlerta {
+  const envHelada = process.env.ALERTA_UMBRAL_HELADA_C;
+  const envSequia = process.env.ALERTA_UMBRAL_SEQUIA_MM;
+  return {
+    heladaC: envHelada !== undefined && envHelada.trim() !== '' ? Number(envHelada) : 0,
+    ventanaHeladaDias: 3, // 72 horas
+    sequiaMm: envSequia !== undefined && envSequia.trim() !== '' ? Number(envSequia) : 10,
+    ventanaDedupeSequiaDias: 7, // Ventana de 7 días
+  };
+}
+
+/**
+ * Lectura lazy del intervalo del worker programado de alertas climáticas (Bloqueante 3).
+ */
+export function obtenerWorkerIntervalMs(): number {
+  const envInterval = process.env.ALERTAS_WORKER_INTERVAL_MS;
+  return envInterval !== undefined && envInterval.trim() !== ''
+    ? Number(envInterval)
+    : 3 * 60 * 60 * 1000;
+}
+
+/**
+ * Mapeo de umbrales con getters para lectura lazy y retrocompatibilidad.
+ */
 export const UMBRALES_POR_DEFECTO: UmbralesAlerta = {
-  heladaC: Number(process.env.ALERTA_UMBRAL_HELADA_C ?? 0),
-  ventanaHeladaDias: 3, // 72 horas
-  sequiaMm: Number(process.env.ALERTA_UMBRAL_SEQUIA_MM ?? 10),
-  ventanaDedupeSequiaDias: 3,
+  get heladaC() {
+    return obtenerUmbralesPorDefecto().heladaC;
+  },
+  set heladaC(val: number) {
+    process.env.ALERTA_UMBRAL_HELADA_C = String(val);
+  },
+  get ventanaHeladaDias() {
+    return 3;
+  },
+  set ventanaHeladaDias(_val: number) {},
+  get sequiaMm() {
+    return obtenerUmbralesPorDefecto().sequiaMm;
+  },
+  set sequiaMm(val: number) {
+    process.env.ALERTA_UMBRAL_SEQUIA_MM = String(val);
+  },
+  get ventanaDedupeSequiaDias() {
+    return 7;
+  },
+  set ventanaDedupeSequiaDias(_val: number) {},
 };
 
 /** Intervalo del job programado de verificación de alertas (por defecto cada 3 horas, alineado a RNF-08). */
@@ -121,7 +167,7 @@ export function diferenciaEnDiasIso(fechaA: string, fechaB: string): number | nu
  */
 export function evaluarAlertasPronostico(input: EvaluarAlertasInput): EvaluarAlertasResultado {
   const umbrales: UmbralesAlerta = {
-    ...UMBRALES_POR_DEFECTO,
+    ...obtenerUmbralesPorDefecto(),
     ...input.umbrales,
   };
 
@@ -182,13 +228,15 @@ export function evaluarAlertasPronostico(input: EvaluarAlertasInput): EvaluarAle
     const fechaFin = input.pronostico[input.pronostico.length - 1].fecha;
 
     const yaEnviadaSequia = input.alertasPrevias.some((previa) => {
-      if (previa.tipo !== 'SEQUIA' || !previa.emailEnviado) {
+      // Las filas con emailEnviado=false también cuentan para el dedupe (Mejora 8)
+      if (previa.tipo !== 'SEQUIA') {
         return false;
       }
       if (previa.fechaEvento === fechaInicio) {
         return true;
       }
       const diffDias = diferenciaEnDiasIso(fechaInicio, previa.fechaEvento);
+      // Evita re-emitir alertas para sequías sostenidas activas dentro de la ventana del pronóstico
       return diffDias !== null && diffDias < umbrales.ventanaDedupeSequiaDias;
     });
 
@@ -292,10 +340,14 @@ interface AlertaPrismaDelegate {
       leida?: boolean;
     };
   }): Promise<AlertaRow>;
+  updateMany(args: {
+    where: Record<string, unknown>;
+    data: Record<string, unknown>;
+  }): Promise<{ count: number }>;
 }
 
-function obtenerRepositorioAlerta(): AlertaPrismaDelegate {
-  return (prisma as unknown as { alerta: AlertaPrismaDelegate }).alerta;
+function obtenerRepositorioAlerta(dbOverride?: unknown): AlertaPrismaDelegate {
+  return ((dbOverride ?? prisma) as unknown as { alerta: AlertaPrismaDelegate }).alerta;
 }
 
 export interface VerificacionParcelaResultado {
@@ -303,6 +355,37 @@ export interface VerificacionParcelaResultado {
   parcelaNombre: string | null;
   nuevas: AlertaRegistradaDTO[];
   omitidasPorDedupe: AlertaOmitidaDedupe[];
+}
+
+export interface EstadoFallaEnvio {
+  intentos: number;
+  proximoIntentoAt: number;
+  ultimoError?: string;
+}
+
+const registroFallasEnvio = new Map<string, EstadoFallaEnvio>();
+
+/**
+ * Limpia el registro de fallas de envío y backoff (ideal para pruebas y reinicio).
+ */
+export function limpiarRegistroFallasEnvio(): void {
+  registroFallasEnvio.clear();
+}
+
+/**
+ * Consulta el estado de reintentos y backoff de una alerta fallida.
+ */
+export function obtenerEstadoFallaEnvio(alertaId: string): EstadoFallaEnvio | undefined {
+  return registroFallasEnvio.get(alertaId);
+}
+
+/**
+ * Calcula el tiempo de backoff exponencial en ms tras fallas sucesivas de envío (Mejora 5).
+ */
+export function calcularBackoffEnvioMs(intentos: number): number {
+  const baseMs = 60_000;
+  const maxMs = 15 * 60_000;
+  return Math.min(baseMs * Math.pow(2, Math.max(0, intentos - 1)), maxMs);
 }
 
 /**
@@ -315,9 +398,11 @@ export async function verificarAlertasDeParcela(
     pronosticoPreCargado?: PronosticoDia[];
     sender?: EmailSender;
     umbrales?: Partial<UmbralesAlerta>;
+    db?: unknown;
   },
 ): Promise<VerificacionParcelaResultado | null> {
-  const parcela = await prisma.parcela.findUnique({
+  const dbClient = (opciones?.db ?? prisma) as typeof prisma;
+  const parcela = await dbClient.parcela.findUnique({
     where: { id: parcelaId },
     include: {
       usuario: {
@@ -339,7 +424,7 @@ export async function verificarAlertasDeParcela(
     diasPronostico = respuestaClima.pronostico;
   }
 
-  const repoAlerta = obtenerRepositorioAlerta();
+  const repoAlerta = obtenerRepositorioAlerta(opciones?.db);
   const alertasPrevias = await repoAlerta.findMany({
     where: { parcelaId: parcela.id },
     select: {
@@ -387,12 +472,35 @@ export async function verificarAlertasDeParcela(
       },
     });
 
-    // Doble chequeo: si otra corrida concurrente ya envió el email, no duplicar envío
-    if (registro.emailEnviado) {
+    // Control de reintentos y backoff ante fallas previas de envío SMTP (Mejora 5)
+    const estadoFalla = registroFallasEnvio.get(registro.id);
+    if (estadoFalla && Date.now() < estadoFalla.proximoIntentoAt) {
       evaluacion.omitidasPorDedupe.push({
         tipo: candidata.tipo,
         fechaEvento: candidata.fechaEvento,
-        motivo: 'Email ya despachado en corrida concurrente.',
+        motivo: `Envío omitido temporalmente por backoff tras ${estadoFalla.intentos} intento(s) fallido(s).`,
+      });
+      continue;
+    }
+
+    // Reclamar el envío de forma atómica para evitar envíos duplicados por concurrencia (Bloqueante 2)
+    const reclamo = await repoAlerta.updateMany({
+      where: {
+        id: registro.id,
+        emailEnviado: false,
+      },
+      data: {
+        emailEnviado: true,
+        enviadoAt: new Date(),
+      },
+    });
+
+    // Enviar solo si count === 1
+    if (reclamo.count !== 1) {
+      evaluacion.omitidasPorDedupe.push({
+        tipo: candidata.tipo,
+        fechaEvento: candidata.fechaEvento,
+        motivo: 'Email ya reclamado o despachado por otra ejecución concurrente.',
       });
       continue;
     }
@@ -409,37 +517,49 @@ export async function verificarAlertasDeParcela(
     try {
       await sender(emailPayload);
       envioExitoso = true;
+      registroFallasEnvio.delete(registro.id);
     } catch (err) {
+      const prev = registroFallasEnvio.get(registro.id) ?? { intentos: 0, proximoIntentoAt: 0 };
+      const intentos = prev.intentos + 1;
+      const backoffMs = calcularBackoffEnvioMs(intentos);
+      registroFallasEnvio.set(registro.id, {
+        intentos,
+        proximoIntentoAt: Date.now() + backoffMs,
+        ultimoError: err instanceof Error ? err.message : String(err),
+      });
+
       console.warn(
-        `[alertas-worker] ⚠️ No se pudo enviar el email a <${parcela.usuario.email}>:`,
+        `[alertas-worker] ⚠️ No se pudo enviar el email a <${parcela.usuario.email}> (intento ${intentos}, próximo reintento en ${Math.round(backoffMs / 1000)}s):`,
         err instanceof Error ? err.message : err,
       );
+      // Si el envío falla, revertí el flag (o registrá el fallo) para que pueda reintentarse al vencer el backoff
+      await repoAlerta.update({
+        where: { id: registro.id },
+        data: {
+          emailEnviado: false,
+          enviadoAt: null,
+        },
+      });
     }
 
-    const ahora = new Date();
-    const actualizada = await repoAlerta.update({
-      where: { id: registro.id },
-      data: {
-        emailEnviado: envioExitoso,
-        enviadoAt: envioExitoso ? ahora : null,
-      },
-    });
-
     nuevas.push({
-      id: actualizada.id,
-      userId: actualizada.userId,
-      parcelaId: actualizada.parcelaId,
+      id: registro.id,
+      userId: registro.userId,
+      parcelaId: registro.parcelaId,
       parcelaNombre: parcela.nombre,
       parcelaHectareas: parcela.hectareas,
-      tipo: actualizada.tipo,
-      fechaEvento: actualizada.fechaEvento,
-      valorDetectado: actualizada.valorDetectado,
-      umbral: actualizada.umbral,
-      mensaje: actualizada.mensaje,
-      emailEnviado: actualizada.emailEnviado,
-      enviadoAt: actualizada.enviadoAt ? actualizada.enviadoAt.toISOString() : null,
-      leida: actualizada.leida,
-      createdAt: actualizada.createdAt.toISOString(),
+      tipo: registro.tipo,
+      fechaEvento: registro.fechaEvento,
+      valorDetectado: registro.valorDetectado,
+      umbral: registro.umbral,
+      mensaje: registro.mensaje,
+      emailEnviado: envioExitoso,
+      enviadoAt: envioExitoso ? new Date().toISOString() : null,
+      leida: registro.leida,
+      createdAt:
+        registro.createdAt instanceof Date
+          ? registro.createdAt.toISOString()
+          : new Date().toISOString(),
     });
   }
 
@@ -557,7 +677,7 @@ export async function listarAlertasDeUsuario(
       heladas,
       sequias,
     },
-    umbrales: UMBRALES_POR_DEFECTO,
+    umbrales: obtenerUmbralesPorDefecto(),
   };
 }
 
@@ -607,14 +727,27 @@ export async function marcarAlertaLeida(
 }
 
 /**
+ * Error tipado emitido cuando una alerta o el usuario no existe o no le pertenece (Mejora 4).
+ */
+export class AlertaNotFoundError extends Error {
+  public readonly statusCode = 404;
+  constructor(message = 'Alerta no encontrada o no pertenece al usuario') {
+    super(message);
+    this.name = 'AlertaNotFoundError';
+  }
+}
+
+/**
  * Reenvía manualmente el correo de una alerta específica usando Nodemailer
  * y actualiza su estado a emailEnviado = true si el despacho fue exitoso.
  */
 export async function reenviarEmailAlerta(
   userId: string,
   alertaId: string,
+  dbOverride?: unknown,
 ): Promise<{ alerta: AlertaRegistradaDTO; mensaje: string }> {
-  const repoAlerta = obtenerRepositorioAlerta();
+  const dbClient = (dbOverride ?? prisma) as typeof prisma;
+  const repoAlerta = obtenerRepositorioAlerta(dbOverride);
   const existente = await repoAlerta.findFirst({
     where: { id: alertaId, userId },
     include: {
@@ -625,16 +758,16 @@ export async function reenviarEmailAlerta(
   });
 
   if (!existente) {
-    throw new Error('Alerta no encontrada');
+    throw new AlertaNotFoundError('Alerta no encontrada o no pertenece al usuario');
   }
 
-  const usuario = await prisma.usuario.findUnique({
+  const usuario = await dbClient.usuario.findUnique({
     where: { id: userId },
     select: { email: true, nombre: true },
   });
 
   if (!usuario) {
-    throw new Error('Usuario no encontrado');
+    throw new AlertaNotFoundError('Usuario no encontrado');
   }
 
   const emailPayload = alertaEmailService.construirEmail({
@@ -688,16 +821,23 @@ export async function reenviarEmailAlerta(
 // ============================================================================
 
 const colaParcelasPendientes = new Set<string>();
+export const pronosticosPreCargadosCache = new Map<string, PronosticoDia[]>();
 let procesandoCola = false;
 
 /**
  * Encola la evaluación asíncrona de una parcela sin bloquear la respuesta HTTP del BFF.
+ * Guarda los pronósticos precargados en un Map<parcelaId, pronostico> para que ninguna
+ * parcela encolada pierda el suyo y vuelva a llamar a Open-Meteo (Mejora 6).
  */
 export function encolarVerificacionParcela(
   parcelaId: string,
   pronosticoPreCargado?: PronosticoDia[],
 ): void {
+  if (pronosticoPreCargado) {
+    pronosticosPreCargadosCache.set(parcelaId, pronosticoPreCargado);
+  }
   colaParcelasPendientes.add(parcelaId);
+
   if (procesandoCola) return;
 
   procesandoCola = true;
@@ -709,9 +849,12 @@ export function encolarVerificacionParcela(
         const idActual = iterator.value;
         colaParcelasPendientes.delete(idActual);
 
+        const pronostico = pronosticosPreCargadosCache.get(idActual);
+        pronosticosPreCargadosCache.delete(idActual);
+
         try {
           await verificarAlertasDeParcela(idActual, {
-            pronosticoPreCargado: idActual === parcelaId ? pronosticoPreCargado : undefined,
+            pronosticoPreCargado: pronostico,
           });
         } catch (err) {
           console.warn(`[alertas-worker] Error procesando parcela encolada ${idActual}:`, err);
@@ -723,41 +866,113 @@ export function encolarVerificacionParcela(
   });
 }
 
+let barridaEnEjecucion = false;
+
 /**
- * Ejecuta una barrida completa sobre todas las parcelas registradas en el sistema.
- * Llamado periódicamente por el job programado del BFF.
+ * Consulta si hay una barrida programada actualmente en ejecución (Mejora 7).
  */
-export async function ejecutarBarridaProgramadaAlertas(): Promise<{
+export function isBarridaEnEjecucion(): boolean {
+  return barridaEnEjecucion;
+}
+
+export interface ResultadoBarridaProgramada {
   parcelasEvaluadas: number;
   alertasEmitidas: number;
   omitidasPorDedupe: number;
-}> {
-  const parcelas = await prisma.parcela.findMany({
-    select: { id: true },
+  omitidaPorSolapamiento?: boolean;
+}
+
+export interface OpcionesBarridaProgramada {
+  db?: unknown;
+  limiteConcurrencia?: number;
+  verificador?: (parcelaId: string) => Promise<VerificacionParcelaResultado | null>;
+}
+
+/**
+ * Procesa una colección de elementos limitando la concurrencia simultánea (Mejora 7).
+ */
+export async function procesarConLimiteConcurrencia<T, R>(
+  items: T[],
+  limite: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const resultados: R[] = [];
+  const limiteEfectivo = Math.max(1, Math.min(limite, items.length));
+  let cursor = 0;
+
+  const workers = Array.from({ length: limiteEfectivo }, async () => {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      const item = items[idx];
+      const res = await fn(item);
+      resultados.push(res);
+    }
   });
 
-  let parcelasEvaluadas = 0;
-  let alertasEmitidas = 0;
-  let omitidasPorDedupe = 0;
+  await Promise.all(workers);
+  return resultados;
+}
 
-  for (const parcela of parcelas) {
-    try {
-      const resultado = await verificarAlertasDeParcela(parcela.id);
-      if (resultado) {
-        parcelasEvaluadas++;
-        alertasEmitidas += resultado.nuevas.length;
-        omitidasPorDedupe += resultado.omitidasPorDedupe.length;
-      }
-    } catch (err) {
-      console.warn(`[alertas-worker] Fallo al evaluar parcela ${parcela.id} en job programado:`, err);
-    }
+/**
+ * Ejecuta una barrida completa sobre todas las parcelas registradas en el sistema.
+ * Agrega flag de "en ejecución" para no solapar con la corrida anterior y un límite de concurrencia (Mejora 7).
+ */
+export async function ejecutarBarridaProgramadaAlertas(
+  opciones?: OpcionesBarridaProgramada,
+): Promise<ResultadoBarridaProgramada> {
+  if (barridaEnEjecucion) {
+    console.warn(
+      '[alertas-worker] ⚠️ Barrida programada ya se encuentra en ejecución. Omitiendo corrida concurrente.',
+    );
+    return {
+      parcelasEvaluadas: 0,
+      alertasEmitidas: 0,
+      omitidasPorDedupe: 0,
+      omitidaPorSolapamiento: true,
+    };
   }
 
-  return {
-    parcelasEvaluadas,
-    alertasEmitidas,
-    omitidasPorDedupe,
-  };
+  barridaEnEjecucion = true;
+  try {
+    const dbClient = (opciones?.db ?? prisma) as typeof prisma;
+    const parcelas = await dbClient.parcela.findMany({
+      select: { id: true },
+    });
+
+    const limite = opciones?.limiteConcurrencia ?? 5;
+    const verificar =
+      opciones?.verificador ??
+      ((id: string) => verificarAlertasDeParcela(id, { db: opciones?.db }));
+
+    let parcelasEvaluadas = 0;
+    let alertasEmitidas = 0;
+    let omitidasPorDedupe = 0;
+
+    await procesarConLimiteConcurrencia(parcelas, limite, async (parcela) => {
+      try {
+        const resultado = await verificar(parcela.id);
+        if (resultado) {
+          parcelasEvaluadas++;
+          alertasEmitidas += resultado.nuevas.length;
+          omitidasPorDedupe += resultado.omitidasPorDedupe.length;
+        }
+      } catch (err) {
+        console.warn(
+          `[alertas-worker] Fallo al evaluar parcela ${parcela.id} en job programado:`,
+          err,
+        );
+      }
+    });
+
+    return {
+      parcelasEvaluadas,
+      alertasEmitidas,
+      omitidasPorDedupe,
+    };
+  } finally {
+    barridaEnEjecucion = false;
+  }
 }
 
 export interface LoggerLike {
@@ -790,7 +1005,7 @@ export function iniciarWorkerAlertas(logger?: LoggerLike): () => void {
     try {
       const resumen = await ejecutarBarridaProgramadaAlertas();
       if (resumen.parcelasEvaluadas > 0 || resumen.alertasEmitidas > 0) {
-        logInfo('[alertas-worker] Barrida programada completada', resumen);
+        logInfo('[alertas-worker] Barrida programada completada', { ...resumen });
       }
     } catch (err) {
       logWarn('[alertas-worker] Error en barrida programada de alertas', err);
@@ -803,15 +1018,18 @@ export function iniciarWorkerAlertas(logger?: LoggerLike): () => void {
   }, 15_000);
   timeoutInicial.unref();
 
+  const workerInterval = obtenerWorkerIntervalMs();
+  const umbralesActuales = obtenerUmbralesPorDefecto();
+
   const intervalo = setInterval(() => {
     void correrJob();
-  }, WORKER_INTERVAL_MS);
+  }, workerInterval);
   intervalo.unref();
 
   logInfo('[alertas-worker] Worker programado de alertas climáticas activo', {
-    intervaloMinutos: Math.round(WORKER_INTERVAL_MS / 60_000),
-    umbralHeladaC: UMBRALES_POR_DEFECTO.heladaC,
-    umbralSequiaMm: UMBRALES_POR_DEFECTO.sequiaMm,
+    intervaloMinutos: Math.round(workerInterval / 60_000),
+    umbralHeladaC: umbralesActuales.heladaC,
+    umbralSequiaMm: umbralesActuales.sequiaMm,
   });
 
   return () => {

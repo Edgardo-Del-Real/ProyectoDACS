@@ -37,6 +37,22 @@ export interface ConstruirEmailAlertaParams {
 }
 
 /**
+ * Escapa los caracteres especiales HTML (& < > " ') para evitar inyecciones de código
+ * en los cuerpos HTML de correos electrónicos.
+ */
+export function escaparHtml(valor: string | number | null | undefined): string {
+  if (valor === null || valor === undefined) {
+    return '';
+  }
+  return String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
  * Servicio encargado de la construcción de plantillas (texto/HTML)
  * y despacho de correos electrónicos de alertas climáticas usando Nodemailer (US-06).
  */
@@ -140,12 +156,12 @@ export class AlertaEmailService {
       const html = `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #bae6fd; border-radius: 12px; background-color: #f0f9ff; color: #0c4a6e;">
         <h2 style="margin-top: 0; color: #0369a1;">❄️ Alerta Temprana de Helada</h2>
-        <p>Hola <strong>${nombreProductor}</strong>,</p>
+        <p>Hola <strong>${escaparHtml(nombreProductor)}</strong>,</p>
         <p>Se detectó una temperatura mínima crítica en las próximas 72 horas para tu parcela:</p>
         <ul style="background: #ffffff; padding: 16px 32px; border-radius: 8px; border: 1px solid #e0f2fe;">
-          <li><strong>Parcela:</strong> ${nombreLote}</li>
-          <li><strong>Fecha prevista:</strong> ${alerta.fechaEvento}</li>
-          <li><strong>Temperatura mínima prevista:</strong> <span style="color: #0284c7; font-weight: bold;">${alerta.valorDetectado} °C</span> (umbral ≤ ${alerta.umbral} °C)</li>
+          <li><strong>Parcela:</strong> ${escaparHtml(nombreLote)}</li>
+          <li><strong>Fecha prevista:</strong> ${escaparHtml(alerta.fechaEvento)}</li>
+          <li><strong>Temperatura mínima prevista:</strong> <span style="color: #0284c7; font-weight: bold;">${escaparHtml(alerta.valorDetectado)} °C</span> (umbral ≤ ${escaparHtml(alerta.umbral)} °C)</li>
         </ul>
         <p style="font-size: 13px; color: #334155;">Ingresá al Panel de Control Agrícola de ProyectoDACS para ver el detalle de tu lote.</p>
       </div>
@@ -185,12 +201,12 @@ export class AlertaEmailService {
     const html = `
     <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #fde68a; border-radius: 12px; background-color: #fffbeb; color: #78350f;">
       <h2 style="margin-top: 0; color: #b45309;">🌵 Alerta de Estrés Hídrico</h2>
-      <p>Hola <strong>${nombreProductor}</strong>,</p>
+      <p>Hola <strong>${escaparHtml(nombreProductor)}</strong>,</p>
       <p>La precipitación acumulada prevista para los próximos 7 días se encuentra por debajo del umbral hídrico configurado:</p>
       <ul style="background: #ffffff; padding: 16px 32px; border-radius: 8px; border: 1px solid #fef3c7;">
-        <li><strong>Parcela:</strong> ${nombreLote}</li>
-        <li><strong>Período desde:</strong> ${alerta.fechaEvento}</li>
-        <li><strong>Precipitación prevista (7 días):</strong> <span style="color: #d97706; font-weight: bold;">${alerta.valorDetectado} mm</span> (umbral mínimo: ${alerta.umbral} mm)</li>
+        <li><strong>Parcela:</strong> ${escaparHtml(nombreLote)}</li>
+        <li><strong>Período desde:</strong> ${escaparHtml(alerta.fechaEvento)}</li>
+        <li><strong>Precipitación prevista (7 días):</strong> <span style="color: #d97706; font-weight: bold;">${escaparHtml(alerta.valorDetectado)} mm</span> (umbral mínimo: ${escaparHtml(alerta.umbral)} mm)</li>
       </ul>
       <p style="font-size: 13px; color: #334155;">Ingresá al Panel de Control Agrícola de ProyectoDACS para ver el detalle de tu lote.</p>
     </div>
@@ -291,11 +307,11 @@ export class AlertaEmailService {
         html: `
         <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #10b981; border-radius: 12px; background-color: #ecfdf5; color: #065f46;">
           <h2 style="margin-top: 0; color: #047857;">🌱 Verificación de Correo Exitosa (Nodemailer)</h2>
-          <p>Hola <strong>${nombre}</strong>,</p>
+          <p>Hola <strong>${escaparHtml(nombre)}</strong>,</p>
           <p>Este es un correo de prueba emitido por el sistema de alertas climáticas de <strong>ProyectoDACS</strong>.</p>
           <p>Si estás leyendo este mensaje en tu bandeja de entrada, tu servidor SMTP se encuentra <strong>correctamente vinculado y listo para enviar alertas de helada y estrés hídrico</strong>.</p>
           <hr style="border: none; border-top: 1px solid #a7f3d0; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #047857;">Enviado el ${ahoraIso} mediante Nodemailer.</p>
+          <p style="font-size: 12px; color: #047857;">Enviado el ${escaparHtml(ahoraIso)} mediante Nodemailer.</p>
         </div>
       `.trim(),
         meta: {

@@ -15,15 +15,17 @@ import { iniciarWorkerAlertas } from './services/alertas/alertas.js';
 
 // Cargar variables de entorno desde .env si process.loadEnvFile existe en Node
 if (typeof process.loadEnvFile === 'function') {
-  for (const rutaEnv of [
+  const posiblesRutas = [
     resolve(process.cwd(), 'apps/bff/.env'),
-  ]) {
-    if (existsSync(rutaEnv)) {
-      try {
-        process.loadEnvFile(rutaEnv);
-      } catch {
-        // Ignorar si ya fue cargado o no se puede leer
-      }
+    resolve(process.cwd(), '.env'),
+  ];
+  const rutaEncontrada = posiblesRutas.find((r) => existsSync(r));
+  if (rutaEncontrada) {
+    try {
+      process.loadEnvFile(rutaEncontrada);
+    } catch (err) {
+      console.error(`[env] Error al parsear archivo de entorno en ${rutaEncontrada}:`, err);
+      throw err;
     }
   }
 }
@@ -37,11 +39,11 @@ const app = Fastify({ logger: true });
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
   : [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-  ];
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+    ];
 
 await app.register(cors, {
   origin: (origin, cb) => {

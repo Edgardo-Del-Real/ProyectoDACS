@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db.js';
 import {
+  AlertaNotFoundError,
   alertaEmailService,
   listarAlertasDeUsuario,
   marcarAlertaLeida,
@@ -216,7 +217,7 @@ export const alertasRoutes: FastifyPluginAsync = async (app) => {
       } catch (error) {
         request.log.error({ err: error }, 'Error al enviar correo de prueba vía Nodemailer');
         return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Error al enviar correo de prueba',
+          error: 'No se pudo enviar el correo de prueba. Verifique la configuración del servidor de correo.',
         });
       }
     },
@@ -253,9 +254,12 @@ export const alertasRoutes: FastifyPluginAsync = async (app) => {
         const resultado = await reenviarEmailAlerta(userId, alertaId);
         return resultado;
       } catch (error) {
+        if (error instanceof AlertaNotFoundError) {
+          return reply.code(404).send({ error: error.message });
+        }
         request.log.error({ err: error, alertaId }, 'Error al reenviar correo de alerta');
         return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Error al reenviar el correo',
+          error: 'No se pudo reenviar la notificación por correo. Verifique la configuración del servidor de correo.',
         });
       }
     },
