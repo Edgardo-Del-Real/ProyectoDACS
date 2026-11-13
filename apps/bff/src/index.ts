@@ -6,6 +6,7 @@ import { authRoutes } from './routes/auth.js';
 import { parcelasRoutes } from './routes/parcelas.js';
 import { climaRoutes } from './routes/clima.js';
 import { rotacionRoutes } from './routes/rotacion.js';
+import { mercadoRoutes } from './routes/mercado.js';
 import { healthRoutes } from './routes/health.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -65,6 +66,9 @@ await app.register(climaRoutes, { prefix: '/api/parcelas' });
 
 // Rutas de plan de rotación plurianual (US-09)
 await app.register(rotacionRoutes, { prefix: '/api/parcelas' });
+
+// Rutas de cotizaciones de mercado y futuros (US-07)
+await app.register(mercadoRoutes, { prefix: '/api/mercado' });
 
 try {
   await app.listen({ port: PORT, host: HOST });
