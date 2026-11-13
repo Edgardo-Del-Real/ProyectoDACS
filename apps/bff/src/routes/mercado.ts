@@ -85,7 +85,34 @@ export const mercadoRoutes: FastifyPluginAsync = async (app) => {
             dias: { type: 'integer', default: 30, minimum: 1, maximum: 365 },
           },
         },
-        response: { 400: errorSchema, 401: errorSchema, 500: errorSchema },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              cultivo: { type: 'string' },
+              posicion: { type: 'string' },
+              puntos: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    fecha: { type: 'string' },
+                    valor: { type: 'number' },
+                    posicion: { type: 'string' },
+                  },
+                },
+              },
+              minimo: { type: 'number' },
+              maximo: { type: 'number' },
+              promedio: { type: 'number' },
+              variacionTotalPct: { type: 'number' },
+              stale: { type: 'boolean' },
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          500: errorSchema,
+        },
       },
       preHandler: [app.authenticate],
     },

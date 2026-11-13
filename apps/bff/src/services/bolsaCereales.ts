@@ -160,8 +160,26 @@ export function normalizarPosicion(texto: string): string | null {
 }
 
 /** Convierte el precio del sitio ("1349", "s/c") en número o null. */
-function parsearValor(texto: string): number | null {
-  const limpio = texto.replace(/\./g, '').replace(',', '.').trim();
+export function parsearValor(texto: string): number | null {
+  const trim = texto.trim();
+  if (!trim) return null;
+
+  let limpio = trim;
+  const tienePunto = limpio.includes('.');
+  const tieneComa = limpio.includes(',');
+
+  if (tienePunto && tieneComa) {
+    const ultimaComa = limpio.lastIndexOf(',');
+    const ultimoPunto = limpio.lastIndexOf('.');
+    if (ultimaComa > ultimoPunto) {
+      limpio = limpio.replace(/\./g, '').replace(',', '.');
+    } else {
+      limpio = limpio.replace(/,/g, '');
+    }
+  } else if (tieneComa) {
+    limpio = limpio.replace(',', '.');
+  }
+
   if (!/^\d+(\.\d+)?$/.test(limpio)) return null;
 
   const valor = Number(limpio);
@@ -402,16 +420,26 @@ export async function obtenerPreciosBolsa(): Promise<PaginaCacheada> {
 
   let spot: SpotParseado = { fecha: null, spot: {}, advertencias: [] };
   try {
-    const htmlFlash = await descargar(URL_FLASH);
-    spot = parsearSpotFlash(htmlFlash);
+    spot = await bolsaBreaker.execute(async () => {
+      const htmlFlash = await descargar(URL_FLASH);
+      return parsearSpotFlash(htmlFlash);
+    });
   } catch (error) {
     spot.advertencias.push(
       `No se pudo leer el spot: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 
-  cachePagina = { oficiales, spot, obtenidaEn: Date.now() };
-  return cachePagina;
+  const resultado: PaginaCacheada = { oficiales, spot, obtenidaEn: Date.now() };
+
+  // No guardar en cachePagina resultados fallidos o vacíos
+  const tieneOficiales = oficiales.cotizaciones.length > 0;
+  const tieneSpot = Object.keys(spot.spot).length > 0;
+  if (tieneOficiales && tieneSpot) {
+    cachePagina = resultado;
+  }
+
+  return resultado;
 }
 
 /** Solo para tests: limpia la caché en memoria. */

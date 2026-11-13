@@ -363,10 +363,9 @@ export async function main() {
 
   // 4. Cotizaciones de mercado (US-07)
   //
-  // No se siembran precios: los publica la Bolsa de Cereales de Buenos Aires y
-  // los carga `sincronizarDesdeBolsa()` en el primer request (o desde un cron).
-  // Antes este bloque escribía valores inventados con `fuente: 'Matba Rofex'`,
-  // que después la simulación (US-03) habría consumido como si fueran reales.
+  // No se siembran precios fijos: los publica la Bolsa de Cereales de Buenos Aires y
+  // los carga `obtenerCotizacionesMercado()` mediante refresco lazy (si no hay datos
+  // o tienen más de 6 horas) o mediante el worker `npm run sync:mercado`.
   console.log('ℹ️  Cotizaciones de mercado: se obtienen de la Bolsa de Cereales en runtime.');
   console.log('🌾 Seed completado con éxito.');
 }

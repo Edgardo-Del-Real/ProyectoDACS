@@ -10,3 +10,6 @@ CREATE INDEX "Precio_cultivo_posicion_idx" ON "Precio"("cultivo", "posicion");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Precio_cultivo_posicion_fecha_fuente_key" ON "Precio"("cultivo", "posicion", "fecha", "fuente");
+
+-- Limpiar filas con fuente inventada vieja ("Matba Rofex")
+DELETE FROM "Precio" WHERE "fuente" = 'Matba Rofex' OR "fuente" LIKE '%Matba Rofex%';

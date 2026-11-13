@@ -95,3 +95,57 @@ export function calcularMetricasTendencia(puntos: SerieHistoricaPunto[]): Metric
 
   return { minimo, maximo, promedio, variacionTotalPct };
 }
+
+const aFechaISO = (d: Date): string => d.toISOString().split('T')[0];
+
+/** Feriados nacionales fijos comunes en Argentina (MM-DD) */
+const FERIADOS_FIJOS_ARG: ReadonlySet<string> = new Set([
+  '01-01', // Año Nuevo
+  '03-24', // Memoria, Verdad y Justicia
+  '04-02', // Malvinas
+  '05-01', // Trabajador
+  '05-25', // Revolución de Mayo
+  '06-20', // Belgrano
+  '07-09', // Independencia
+  '12-08', // Inmaculada Concepción
+  '12-25', // Navidad
+]);
+
+/**
+ * Determina si una cotización es stale considerando días hábiles y feriados.
+ * Se considera stale solo si pasaron más de 1 día hábil desde la fecha de publicación.
+ * Fines de semana (sábado y domingo) y feriados no suman días hábiles transcurridos.
+ */
+export function esCotizacionStale(
+  fechaPublicacion: Date | string,
+  fechaReferencia: Date = new Date(),
+  feriadosAdicionales: Set<string> = new Set(),
+): boolean {
+  const pub = typeof fechaPublicacion === 'string'
+    ? new Date(`${fechaPublicacion.split('T')[0]}T00:00:00.000Z`)
+    : new Date(`${fechaPublicacion.toISOString().split('T')[0]}T00:00:00.000Z`);
+
+  const ref = new Date(`${fechaReferencia.toISOString().split('T')[0]}T00:00:00.000Z`);
+
+  if (ref.getTime() <= pub.getTime()) return false;
+
+  let diasHabiles = 0;
+  const cursor = new Date(pub);
+
+  while (true) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    if (cursor.getTime() > ref.getTime()) break;
+
+    const diaSemana = cursor.getUTCDay(); // 0 = Domingo, 6 = Sábado
+    if (diaSemana === 0 || diaSemana === 6) continue;
+
+    const iso = aFechaISO(cursor);
+    const mmdd = iso.slice(5);
+    if (FERIADOS_FIJOS_ARG.has(mmdd) || feriadosAdicionales.has(iso)) continue;
+
+    diasHabiles++;
+    if (diasHabiles > 1) return true;
+  }
+
+  return diasHabiles > 1;
+}

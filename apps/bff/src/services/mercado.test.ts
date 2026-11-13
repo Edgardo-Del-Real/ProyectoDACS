@@ -7,15 +7,24 @@ import {
   normalizarPosicion,
   parsearPreciosOficiales,
   parsearSpotFlash,
+  parsearValor,
 } from './bolsaCereales.js';
+import { prisma } from '../db.js';
+import {
+  ejecutarSincronizacionCompartida,
+  obtenerCotizacionesMercado,
+  sincronizarDesdeBolsa,
+} from './mercado.js';
 import {
   CULTIVOS_MERCADO_VALIDOS,
   MercadoClientError,
   normalizarCultivoMercado,
+  validarPosicionMercado,
 } from './mercadoCatalogo.js';
 import {
   calcularMetricasTendencia,
   claveOrdenPosicion,
+  esCotizacionStale,
   generarDescripcionPosicion,
 } from './mercadoMetricas.js';
 
@@ -23,6 +32,15 @@ const FIXTURE = readFileSync(
   new URL('./__fixtures__/precios-oficiales.html', import.meta.url),
   'utf8',
 );
+
+describe('parsearValor', () => {
+  it('soporta separadores decimales y de miles comunes', () => {
+    assert.equal(parsearValor('473,5'), 473.5);
+    assert.equal(parsearValor('1.234,50'), 1234.5);
+    assert.equal(parsearValor('473.5'), 473.5);
+    assert.equal(parsearValor('473'), 473);
+  });
+});
 
 describe('normalizarPosicion', () => {
   it('traduce los meses del sitio al código español', () => {
@@ -181,6 +199,21 @@ describe('normalizarCultivoMercado', () => {
   });
 });
 
+describe('validarPosicionMercado', () => {
+  it('acepta DISPONIBLE y vencimientos mensuales válidos', () => {
+    assert.equal(validarPosicionMercado('DISPONIBLE'), 'DISPONIBLE');
+    assert.equal(validarPosicionMercado('disponible'), 'DISPONIBLE');
+    assert.equal(validarPosicionMercado('NOV26'), 'NOV26');
+    assert.equal(validarPosicionMercado('ene27'), 'ENE27');
+  });
+
+  it('rechaza posiciones desconocidas o mal formadas con MercadoClientError', () => {
+    assert.throws(() => validarPosicionMercado('2026'), MercadoClientError);
+    assert.throws(() => validarPosicionMercado('XYZ99'), MercadoClientError);
+    assert.throws(() => validarPosicionMercado(''), MercadoClientError);
+  });
+});
+
 describe('mercadoMetricas', () => {
   it('describe la posición en castellano', () => {
     assert.equal(generarDescripcionPosicion('NOV26'), 'Noviembre 2026');
@@ -218,5 +251,232 @@ describe('mercadoMetricas', () => {
       { fecha: '2026-11-02', valor: 50, posicion: 'DISPONIBLE' },
     ]);
     assert.equal(conCero.variacionTotalPct, 0);
+  });
+
+  it('calcula stale considerando fines de semana y feriados (solo si pasa más de 1 día hábil)', () => {
+    // Publicado el viernes 06/11/2026
+    const fechaViernes = new Date('2026-11-06T12:00:00Z');
+
+    // Sábado y domingo: no es stale
+    assert.equal(esCotizacionStale(fechaViernes, new Date('2026-11-07T12:00:00Z')), false);
+    assert.equal(esCotizacionStale(fechaViernes, new Date('2026-11-08T12:00:00Z')), false);
+
+    // Lunes siguiente (1 día hábil transcurrido): NO es stale
+    assert.equal(esCotizacionStale(fechaViernes, new Date('2026-11-09T12:00:00Z')), false);
+
+    // Martes siguiente (2 días hábiles transcurridos): SÍ es stale
+    assert.equal(esCotizacionStale(fechaViernes, new Date('2026-11-10T12:00:00Z')), true);
+
+    // Si el lunes 09/11 es feriado:
+    const feriados = new Set(['2026-11-09']);
+    // El martes solo transcurrió 1 día hábil (el martes), por lo tanto NO es stale
+    assert.equal(esCotizacionStale(fechaViernes, new Date('2026-11-10T12:00:00Z'), feriados), false);
+    // El miércoles ya son 2 días hábiles (martes y miércoles) -> SÍ es stale
+    assert.equal(esCotizacionStale(fechaViernes, new Date('2026-11-11T12:00:00Z'), feriados), true);
+  });
+});
+
+type MockablePrecio = {
+  findMany: (...args: unknown[]) => Promise<unknown>;
+  findFirst: (...args: unknown[]) => Promise<unknown>;
+};
+
+type MockablePrisma = {
+  $transaction: (...args: unknown[]) => Promise<unknown>;
+};
+
+describe('obtenerCotizacionesMercado', () => {
+  it('spot con fecha 03/11 y futuros con 04/11 devuelven spotActual y la curva completa (Bloqueante 1)', async () => {
+    const precio = prisma.precio as unknown as MockablePrecio;
+    const originalFindMany = precio.findMany;
+    const originalFindFirst = precio.findFirst;
+
+    try {
+      precio.findFirst = async () => ({
+        createdAt: new Date(),
+      });
+
+      precio.findMany = async () => {
+        return [
+          {
+            id: '1',
+            cultivo: 'Soja',
+            posicion: 'NOV26',
+            fecha: new Date('2026-11-04T00:00:00Z'),
+            fuente: 'Bolsa de Cereales de Buenos Aires (FOB Ley 21.453)',
+            valor: 473,
+            moneda: 'USD',
+            createdAt: new Date(),
+          },
+          {
+            id: '2',
+            cultivo: 'Soja',
+            posicion: 'DIC26',
+            fecha: new Date('2026-11-04T00:00:00Z'),
+            fuente: 'Bolsa de Cereales de Buenos Aires (FOB Ley 21.453)',
+            valor: 475,
+            moneda: 'USD',
+            createdAt: new Date(),
+          },
+          {
+            id: '3',
+            cultivo: 'Soja',
+            posicion: 'DISPONIBLE',
+            fecha: new Date('2026-11-03T00:00:00Z'),
+            fuente: 'Bolsa de Cereales de Buenos Aires (FOB Ley 21.453)',
+            valor: 233,
+            moneda: 'USD',
+            createdAt: new Date(),
+          },
+        ];
+      };
+
+      const res = await obtenerCotizacionesMercado('Soja');
+      assert.equal(res.spotActual, 233);
+      assert.equal(res.cotizaciones.length, 3);
+      assert.ok(res.cotizaciones.some((c) => c.posicion === 'DISPONIBLE' && c.valor === 233));
+      assert.ok(res.cotizaciones.some((c) => c.posicion === 'NOV26' && c.valor === 473));
+      assert.ok(res.cotizaciones.some((c) => c.posicion === 'DIC26' && c.valor === 475));
+    } finally {
+      precio.findMany = originalFindMany;
+      precio.findFirst = originalFindFirst;
+    }
+  });
+
+  it('refresca de forma lazy si los datos tienen más de 6 horas, y sirve stale: true si falla la sincronización (Bloqueante 2)', async () => {
+    const precio = prisma.precio as unknown as MockablePrecio;
+    const originalFindFirst = precio.findFirst;
+    const originalFindMany = precio.findMany;
+
+    try {
+      precio.findFirst = async () => ({
+        createdAt: new Date(Date.now() - 7 * 60 * 60 * 1000),
+        fecha: new Date('2026-11-04T00:00:00Z'),
+      });
+
+      precio.findMany = async () => {
+        return [
+          {
+            id: '1',
+            cultivo: 'Soja',
+            posicion: 'DISPONIBLE',
+            fecha: new Date('2026-11-04T00:00:00Z'),
+            fuente: 'Bolsa de Cereales de Buenos Aires (FOB Ley 21.453)',
+            valor: 233,
+            moneda: 'USD',
+            createdAt: new Date(Date.now() - 7 * 60 * 60 * 1000),
+          },
+        ];
+      };
+
+      const res = await obtenerCotizacionesMercado('Soja');
+      assert.equal(res.stale, true);
+      assert.ok(res.advertencias.length > 0);
+    } finally {
+      precio.findFirst = originalFindFirst;
+      precio.findMany = originalFindMany;
+    }
+  });
+
+  it('reutiliza la misma promesa en curso para sincronizaciones concurrentes (Bloqueante 2)', async () => {
+    let llamadasAProveedor = 0;
+    const mockProveedor = async () => {
+      llamadasAProveedor++;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return {
+        oficiales: { fecha: '2026-11-04', cotizaciones: [], advertencias: [] },
+        spot: { fecha: '2026-11-04', spot: {}, advertencias: [] },
+        obtenidaEn: Date.now(),
+      };
+    };
+
+    const p1 = ejecutarSincronizacionCompartida(mockProveedor);
+    const p2 = ejecutarSincronizacionCompartida(mockProveedor);
+    await Promise.all([p1, p2]);
+
+    assert.equal(llamadasAProveedor, 1);
+  });
+
+  it('calcula la variación porcentual contra la fila anterior real por posición (Mejora 7)', async () => {
+    const precio = prisma.precio as unknown as MockablePrecio;
+    const originalFindFirst = precio.findFirst;
+    const originalFindMany = precio.findMany;
+
+    try {
+      precio.findFirst = async () => ({
+        createdAt: new Date(),
+      });
+
+      precio.findMany = async () => {
+        return [
+          {
+            id: '1',
+            cultivo: 'Soja',
+            posicion: 'DISPONIBLE',
+            fecha: new Date('2026-11-04T00:00:00Z'),
+            fuente: 'Bolsa de Cereales de Buenos Aires (FOB Ley 21.453)',
+            valor: 250,
+            moneda: 'USD',
+            createdAt: new Date(),
+          },
+          {
+            id: '2',
+            cultivo: 'Soja',
+            posicion: 'DISPONIBLE',
+            fecha: new Date('2026-11-03T00:00:00Z'),
+            fuente: 'Bolsa de Cereales de Buenos Aires (FOB Ley 21.453)',
+            valor: 200,
+            moneda: 'USD',
+            createdAt: new Date(),
+          },
+        ];
+      };
+
+      const res = await obtenerCotizacionesMercado('Soja');
+      const spot = res.cotizaciones.find((c) => c.posicion === 'DISPONIBLE');
+      assert.equal(spot?.valor, 250);
+      assert.equal(spot?.variacionDiaPct, 25);
+    } finally {
+      precio.findFirst = originalFindFirst;
+      precio.findMany = originalFindMany;
+    }
+  });
+});
+
+describe('sincronizarDesdeBolsa', () => {
+  it('si oficiales.fecha es null, no usa new Date(), no persiste esas filas y emite advertencia (Mejora 4)', async () => {
+    const prismaMock = prisma as unknown as MockablePrisma;
+    const originalTransaction = prismaMock.$transaction;
+    try {
+      prismaMock.$transaction = async () => {
+        return [];
+      };
+
+      const mockProveedor = async () => ({
+        oficiales: {
+          fecha: null,
+          cotizaciones: [{ cultivo: 'Soja' as const, posicion: 'NOV26', valor: 470 }],
+          advertencias: [],
+        },
+        spot: {
+          fecha: '2026-11-04',
+          spot: { Soja: 240 },
+          advertencias: [],
+        },
+        obtenidaEn: Date.now(),
+      });
+
+      const res = await sincronizarDesdeBolsa(mockProveedor);
+
+      // Solo el spot debe haberse procesado para persistencia (1 fila), NO las cotizaciones oficiales sin fecha
+      assert.equal(res.filas, 1);
+      assert.ok(
+        res.advertencias.some((a) =>
+          a.includes('fecha de publicación') || a.includes('precios oficiales'),
+        ),
+      );
+    } finally {
+      prismaMock.$transaction = originalTransaction;
+    }
   });
 });

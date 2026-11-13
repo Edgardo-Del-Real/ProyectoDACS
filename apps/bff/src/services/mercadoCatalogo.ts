@@ -43,3 +43,36 @@ export function normalizarCultivoMercado(nombre: string): CultivoMercado {
 
   throw new MercadoClientError(`Cultivo no soportado para cotizaciones de mercado: "${nombre}"`);
 }
+
+const MESES_CODIGOS_VALIDOS = new Set([
+  'ENE',
+  'FEB',
+  'MAR',
+  'ABR',
+  'MAY',
+  'JUN',
+  'JUL',
+  'AGO',
+  'SEP',
+  'OCT',
+  'NOV',
+  'DIC',
+]);
+
+/**
+ * Valida la posición contra las posiciones conocidas:
+ * "DISPONIBLE" o un código mensual válido de dos dígitos de año (ej. "NOV26", "ENE27").
+ */
+export function validarPosicionMercado(posicionInput: string): string {
+  const limpia = posicionInput.toUpperCase().trim();
+  if (limpia === 'DISPONIBLE') return 'DISPONIBLE';
+
+  const match = /^([A-Z]{3})(\d{2})$/.exec(limpia);
+  if (match && MESES_CODIGOS_VALIDOS.has(match[1])) {
+    return limpia;
+  }
+
+  throw new MercadoClientError(
+    `Posición "${posicionInput}" no válida. Debe ser DISPONIBLE o un vencimiento mensual (ej. NOV26).`,
+  );
+}
