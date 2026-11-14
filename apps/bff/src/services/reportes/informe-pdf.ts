@@ -2,7 +2,9 @@ import * as turf from '@turf/turf';
 import type { Polygon } from 'geojson';
 import { prisma } from '../../db.js';
 import { obtenerPlanRotacion, type PlanRotacionResponse } from '../rotacion.js';
-import { PdfDocumentBuilder } from './pdf-builder.js';
+import { PdfDocumentBuilder, sanitizePdfText } from './pdf-builder.js';
+
+export { sanitizePdfText, PdfDocumentBuilder };
 
 export interface SolicitanteInforme {
   id: string;

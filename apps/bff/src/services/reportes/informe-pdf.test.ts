@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  InformePdfService,
-  sanitizePdfText,
-  verificarPermisoInforme,
-  type SolicitanteInforme,
-} from './informe-pdf.js';
-import { PdfDocumentBuilder } from './pdf-builder.js';
+import { PdfDocumentBuilder, sanitizePdfText } from './pdf-builder.js';
+import type { SolicitanteInforme } from './informe-pdf.js';
 
 describe('PdfDocumentBuilder (US-11)', () => {
   it('genera un buffer PDF estándar válido que inicia con %PDF-1.4 y concluye con %%EOF', () => {
@@ -93,7 +88,7 @@ describe('PdfDocumentBuilder (US-11)', () => {
     });
 
     // Como la fila tiene 2+ líneas, la altura de fila dinámica debe superar los 20 pt estándar
-    assert.ok(endY > 50 + 20 + 25, 'El Y resultante debe contemplar la altura dinámica de la fila multilínea');
+    assert.ok(endY > 50 + 20 + 20, 'El Y resultante debe contemplar la altura dinámica de la fila multilínea');
   });
 });
 

@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { prisma } from '../src/db.js';
 
 interface CultivoSeed {
@@ -369,11 +370,16 @@ export async function main() {
   console.log('ℹ️  Cotizaciones de mercado: se obtienen de la Bolsa de Cereales en runtime.');
 
   // 5. Usuarios de prueba y asociación técnico-productor (Fase 2 / US-11)
-  const passwordHash = '$2a$10$yS9V5jA7q6L3O4N5M6K7JeF8P9Q0R1S2T3U4V5W6X7Y8Z9A0B1C2D'; // hash de prueba
+  // Contraseña de acceso para los usuarios de prueba: "1234"
+  const passwordHash = await bcrypt.hash('1234', 10);
 
   const productor = await prisma.usuario.upsert({
     where: { email: 'productor@dacs.com' },
-    update: { nombre: 'Juan Carlos Rossi', rol: 'AGRICULTOR' },
+    update: {
+      passwordHash,
+      nombre: 'Juan Carlos Rossi',
+      rol: 'AGRICULTOR',
+    },
     create: {
       email: 'productor@dacs.com',
       passwordHash,
@@ -384,7 +390,11 @@ export async function main() {
 
   const tecnico = await prisma.usuario.upsert({
     where: { email: 'tecnico@dacs.com' },
-    update: { nombre: 'Ing. Agr. Marcelo Morales (Asesor INTA)', rol: 'TECNICO' },
+    update: {
+      passwordHash,
+      nombre: 'Ing. Agr. Marcelo Morales (Asesor INTA)',
+      rol: 'TECNICO',
+    },
     create: {
       email: 'tecnico@dacs.com',
       passwordHash,
