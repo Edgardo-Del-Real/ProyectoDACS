@@ -32,6 +32,7 @@ export async function setupSwagger(app: FastifyInstance): Promise<void> {
         { name: 'Parcelas', description: 'Delimitación satelital y gestión de lotes' },
         { name: 'Clima', description: 'Pronósticos hiperlocales y alertas climáticas' },
         { name: 'Campanias', description: 'Historial de cultivos y rotaciones' },
+        { name: 'Reportes', description: 'Informes técnicos en PDF con planificación y proyecciones (US-11)' },
         { name: 'Sistema', description: 'Monitoreo de salud y disponibilidad (RNF-16)' },
       ],
     },

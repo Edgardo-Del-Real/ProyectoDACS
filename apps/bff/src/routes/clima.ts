@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { prisma } from '../db.js';
 import { obtenerPronostico } from '../services/openmeteo.js';
+import { buscarParcelaConAcceso } from '../services/reportes/informe-pdf.js';
 
 export const climaRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/parcelas/:id/clima - Obtener pronóstico de 7 días
@@ -21,10 +21,8 @@ export const climaRoutes: FastifyPluginAsync = async (app) => {
       const parcelaId = request.params.id;
 
       try {
-        // Verificar que la parcela pertenece al usuario
-        const parcela = await prisma.parcela.findFirst({
-          where: { id: parcelaId, userId },
-        });
+        // Verificar que la parcela pertenece al usuario o a un productor asociado (US-11)
+        const parcela = await buscarParcelaConAcceso(parcelaId, userId);
 
         if (!parcela) {
           return reply.code(404).send({ error: 'Parcela no encontrada' });

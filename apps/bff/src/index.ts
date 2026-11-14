@@ -7,6 +7,7 @@ import { parcelasRoutes } from './routes/parcelas.js';
 import { climaRoutes } from './routes/clima.js';
 import { rotacionRoutes } from './routes/rotacion.js';
 import { mercadoRoutes } from './routes/mercado.js';
+import { reportesRoutes } from './routes/reportes.js';
 import { healthRoutes } from './routes/health.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -69,6 +70,9 @@ await app.register(rotacionRoutes, { prefix: '/api/parcelas' });
 
 // Rutas de cotizaciones de mercado y futuros (US-07)
 await app.register(mercadoRoutes, { prefix: '/api/mercado' });
+
+// Rutas de informes técnicos en PDF y asesoramiento (US-11)
+await app.register(reportesRoutes, { prefix: '/api' });
 
 try {
   await app.listen({ port: PORT, host: HOST });

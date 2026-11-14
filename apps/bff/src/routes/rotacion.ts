@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db.js';
+import { buscarParcelaConAcceso } from '../services/reportes/informe-pdf.js';
 import {
   HORIZONTE_MAXIMO,
   HORIZONTE_MINIMO,
@@ -101,12 +102,10 @@ export const rotacionRoutes: FastifyPluginAsync = async (app) => {
       }
 
       try {
-        // Se filtra por dueño en la misma consulta: si la parcela existe pero es
+        // Se filtra por dueño o técnico extensionista asociado: si la parcela existe pero es
         // de otro usuario se responde 404, igual que el resto del BFF. Un 403
         // confirmaría que el ID existe y habilitaría enumeración.
-        const parcela = await prisma.parcela.findFirst({
-          where: { id: parcelaId, userId },
-        });
+        const parcela = await buscarParcelaConAcceso(parcelaId, userId);
 
         if (!parcela) {
           return reply.code(404).send({ error: 'Parcela no encontrada' });
