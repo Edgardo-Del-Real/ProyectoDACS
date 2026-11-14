@@ -169,13 +169,21 @@ export function RecomendacionCultivo({ id, revision = 0 }: { id: string; revisio
               </div>
             ) : (
               <div className="rounded-xl p-4 bg-amber-50 border border-amber-200 text-amber-900 text-sm space-y-2">
-                <p className="font-semibold">No hay datos suficientes para recomendar</p>
+                <p className="font-semibold text-base">Sin recomendación de cultivo disponible</p>
+                <p className="text-amber-800">
+                  Ningún cultivo cumple con las condiciones agronómicas o no hay datos suficientes para recomendar una opción para la próxima campaña.
+                </p>
                 {datos.advertencias.length > 0 && (
-                  <ul className="list-disc pl-5 space-y-1">
-                    {datos.advertencias.map((advertencia, indice) => (
-                      <li key={indice}>{advertencia}</li>
-                    ))}
-                  </ul>
+                  <div className="pt-1">
+                    <p className="font-medium text-xs uppercase tracking-wide text-amber-950 mb-1">
+                      Motivos:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1 text-xs sm:text-sm">
+                      {datos.advertencias.map((advertencia, indice) => (
+                        <li key={indice}>{advertencia}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             )}
@@ -269,16 +277,16 @@ export function RecomendacionCultivo({ id, revision = 0 }: { id: string; revisio
                       : 'Sin dato'}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Días con riesgo de helada
-                  </p>
-                  <p className="text-lg font-bold text-slate-900">
-                    {typeof datos.climaUtilizado.diasConRiesgoHelada === 'number'
-                      ? datos.climaUtilizado.diasConRiesgoHelada
-                      : 'Sin dato'}
-                  </p>
-                </div>
+                {typeof datos.climaUtilizado.diasConRiesgoHelada === 'number' && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Días con riesgo de helada
+                    </p>
+                    <p className="text-lg font-bold text-slate-900">
+                      {datos.climaUtilizado.diasConRiesgoHelada}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {diasClima.length > 0 ? (

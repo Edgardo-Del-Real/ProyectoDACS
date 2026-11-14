@@ -5,14 +5,9 @@ import {
 } from './rotacion.js';
 import type { CultivoCatalogoItem, ReglaTransicionItem } from './rotacion.js';
 
-// Open-Meteo declara esta forma con un tipo no exportado; se replica acá para
-// que el motor sea puro y no dependa del cliente HTTP.
-export interface PronosticoDia {
-  fecha: string;
-  tempMax: number;
-  tempMin: number;
-  precipitacion: number;
-}
+import type { PronosticoDia } from './openmeteo.js';
+
+export type { PronosticoDia };
 
 export type FuenteClima = 'live' | 'cache' | 'no_disponible';
 export type FuentePrecio = 'bd' | 'simulado' | 'no_disponible';
@@ -75,7 +70,26 @@ const PESO_PRECIO = 0.25;
 const clamp = (valor: number, minimo: number, maximo: number): number =>
   Math.min(maximo, Math.max(minimo, valor));
 
-const round1 = (valor: number): number => Math.round(valor * 10) / 10;
+export const round1 = (valor: number): number => Math.round(valor * 10) / 10;
+
+export function esPronosticoValido(datos: unknown): datos is PronosticoDia[] {
+  if (!Array.isArray(datos) || datos.length === 0) return false;
+  return datos.every(
+    (d) =>
+      typeof d === 'object' &&
+      d !== null &&
+      typeof (d as { tempMin?: unknown }).tempMin === 'number' &&
+      !Number.isNaN((d as { tempMin?: unknown }).tempMin),
+  );
+}
+
+export function calcularDiasConRiesgoHelada(
+  tempMinCritica: number | null | undefined,
+  dias: PronosticoDia[],
+): number | null {
+  if (tempMinCritica == null) return null;
+  return dias.filter((d) => d.tempMin <= tempMinCritica).length;
+}
 
 /** Corta un texto en su primera oración para no inflar los motivos expuestos. */
 function primeraOracion(texto: string): string {
@@ -98,15 +112,16 @@ function evaluarRotacion(params: {
 }): EvaluacionRotacion {
   const { item, ultimo, itemUltimo, reglasPorPar, anioVigente } = params;
   const anterior = ultimo.cultivo;
-  const anioUltimo = parsearCampania(ultimo.campania) ?? anioVigente;
-  const aniosEspera = Math.max(0, anioVigente - anioUltimo);
+  const anioUltimo = parsearCampania(ultimo.campania);
+  const anioObjetivo = anioVigente + 1;
+  const aniosEspera = anioUltimo === null ? null : Math.max(0, anioObjetivo - anioUltimo);
 
   const clave = `${normalizarTexto(anterior)}->${normalizarTexto(item.nombre)}`;
   const regla = reglasPorPar.get(clave);
 
   if (regla) {
     const valorBase = clamp(40 + regla.prioridadSugerencia * 12, 0, 100);
-    if (aniosEspera < regla.aniosEsperaMin) {
+    if (aniosEspera !== null && aniosEspera < regla.aniosEsperaMin) {
       return {
         valor: 10,
         excluido: true,
@@ -124,7 +139,7 @@ function evaluarRotacion(params: {
     codigoFamilia(itemUltimo.familiaBotanica) === codigoFamilia(item.familiaBotanica);
   const esperaFamilia = item.aniosEsperaMismaFamilia ?? 0;
 
-  if (mismaFamilia && aniosEspera < esperaFamilia) {
+  if (mismaFamilia && aniosEspera !== null && aniosEspera < esperaFamilia) {
     return {
       valor: 10,
       excluido: true,
@@ -180,22 +195,31 @@ function evaluarPrecio(params: {
   minimo: number | null;
   maximo: number | null;
   precios: PrecioDisponible;
-}): EvaluacionPrecio {
-  const { item, preciosPorCultivo, minimo, maximo, precios } = params;
+  totalValoresPrecio: number;
+}): EvaluacionPrecio | null {
+  const { item, preciosPorCultivo, minimo, maximo, precios, totalValoresPrecio } = params;
   const valorPrecio = preciosPorCultivo.get(normalizarTexto(item.nombre));
 
-  if (valorPrecio === undefined) {
+  const preciosDiferenciados =
+    totalValoresPrecio > 1 && minimo !== null && maximo !== null && maximo !== minimo;
+
+  // Mejora 5: Si hay dispersión de precios y a este cultivo le falta precio, se excluye el factor precio
+  if (preciosDiferenciados && valorPrecio === undefined) {
+    return null;
+  }
+
+  // Mejora 5: Si hay un solo precio o todos son iguales, ningún cultivo queda favorecido (neutro = 50)
+  if (!preciosDiferenciados) {
     return {
       valor: 50,
-      motivo: `Sin precio de referencia para ${item.nombre}.`,
+      motivo:
+        valorPrecio !== undefined
+          ? `Precio de referencia ${valorPrecio} ${precios.moneda} (fuente: ${precios.fuente}); precios homogéneos o sin dispersión en el mercado (factor neutro).`
+          : `Sin precio de referencia para ${item.nombre}; precios sin dispersión en el mercado (factor neutro).`,
     };
   }
 
-  let valor = 60;
-  if (minimo !== null && maximo !== null && maximo !== minimo) {
-    valor = 20 + (80 * (valorPrecio - minimo)) / (maximo - minimo);
-  }
-
+  const valor = round1(20 + (80 * (valorPrecio! - minimo)) / (maximo - minimo));
   let motivo = `Precio de referencia ${valorPrecio} ${precios.moneda} (fuente: ${precios.fuente}).`;
   if (precios.antiguedadDias != null && precios.antiguedadDias > 0) {
     motivo += ` Último dato de hace ${precios.antiguedadDias} día(s).`;
@@ -240,6 +264,11 @@ export function calcularRecomendacion(input: {
     : 'Cargá tus campañas anteriores para que la recomendación respete la rotación de cultivos.';
 
   const advertencias: string[] = [];
+  if (ultimo && parsearCampania(ultimo.campania) === null) {
+    advertencias.push(
+      `Campaña "${ultimo.campania}" no válida: no se pudo calcular el tiempo de espera entre cultivos.`,
+    );
+  }
   if (!disponibleClima) {
     advertencias.push('Clima no disponible: la recomendación se calculó sin el factor climático.');
   }
@@ -309,25 +338,11 @@ export function calcularRecomendacion(input: {
         reglasPorPar,
         anioVigente,
       });
-      factores.push({
-        nombre: 'rotacion',
-        peso: pesosAplicados.rotacion,
-        valor: rotacion.valor,
-        aporte: round1(rotacion.valor * pesosAplicados.rotacion),
-        motivo: rotacion.motivo,
-      });
     }
 
     let climaEvaluado: EvaluacionClima | null = null;
     if (disponibleClima) {
       climaEvaluado = evaluarClima(item, clima);
-      factores.push({
-        nombre: 'clima',
-        peso: pesosAplicados.clima,
-        valor: climaEvaluado.valor,
-        aporte: round1(climaEvaluado.valor * pesosAplicados.clima),
-        motivo: climaEvaluado.motivo,
-      });
     }
 
     let precioEvaluado: EvaluacionPrecio | null = null;
@@ -338,12 +353,53 @@ export function calcularRecomendacion(input: {
         minimo,
         maximo,
         precios,
+        totalValoresPrecio: valoresPrecio.length,
       });
+    }
+
+    // Mejora 5: Si al candidato le falta precio y se excluyó, se redistribuyen los pesos
+    const tieneRotacion = rotacion !== null;
+    const tieneClima = climaEvaluado !== null;
+    const tienePrecio = precioEvaluado !== null;
+
+    const sumaPesosCandidato =
+      (tieneRotacion ? PESO_ROTACION : 0) +
+      (tieneClima ? PESO_CLIMA : 0) +
+      (tienePrecio ? PESO_PRECIO : 0);
+
+    const pesoRot =
+      sumaPesosCandidato > 0 && tieneRotacion ? PESO_ROTACION / sumaPesosCandidato : 0;
+    const pesoCli =
+      sumaPesosCandidato > 0 && tieneClima ? PESO_CLIMA / sumaPesosCandidato : 0;
+    const pesoPre =
+      sumaPesosCandidato > 0 && tienePrecio ? PESO_PRECIO / sumaPesosCandidato : 0;
+
+    if (tieneRotacion && rotacion) {
+      factores.push({
+        nombre: 'rotacion',
+        peso: pesoRot,
+        valor: rotacion.valor,
+        aporte: round1(rotacion.valor * pesoRot),
+        motivo: rotacion.motivo,
+      });
+    }
+
+    if (tieneClima && climaEvaluado) {
+      factores.push({
+        nombre: 'clima',
+        peso: pesoCli,
+        valor: climaEvaluado.valor,
+        aporte: round1(climaEvaluado.valor * pesoCli),
+        motivo: climaEvaluado.motivo,
+      });
+    }
+
+    if (tienePrecio && precioEvaluado) {
       factores.push({
         nombre: 'precio',
-        peso: pesosAplicados.precio,
+        peso: pesoPre,
         valor: precioEvaluado.valor,
-        aporte: round1(precioEvaluado.valor * pesosAplicados.precio),
+        aporte: round1(precioEvaluado.valor * pesoPre),
         motivo: precioEvaluado.motivo,
       });
     }
@@ -359,8 +415,9 @@ export function calcularRecomendacion(input: {
     if (climaEvaluado) motivos.push(climaEvaluado.motivo);
     if (precioEvaluado) motivos.push(precioEvaluado.motivo);
 
+    // Mejora 6: El puntaje es la suma exacta de los aportes ya redondeados
     const puntaje = round1(
-      factores.reduce((total, factor) => total + factor.valor * factor.peso, 0),
+      factores.reduce((total, factor) => total + factor.aporte, 0),
     );
     const excluido = rotacion?.excluido ?? false;
 
@@ -388,7 +445,7 @@ export function calcularRecomendacion(input: {
   });
 
   const noExcluidos = cultivosEvaluados.filter((candidato) => !candidato.excluido);
-  const recomendacion = noExcluidos[0] ?? cultivosEvaluados[0] ?? null;
+  const recomendacion = noExcluidos[0] ?? null;
 
   if (noExcluidos.length === 0 && cultivosEvaluados.length > 0) {
     advertencias.push(

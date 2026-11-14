@@ -1,20 +1,22 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db.js';
 import { obtenerPronostico } from '../services/openmeteo.js';
-import { obtenerPreciosReferencia } from '../services/mercado.js';
-import { calcularRecomendacion } from '../services/recomendacion.js';
+import { obtenerUltimoPrecioCultivo } from '../services/mercado.js';
+import {
+  calcularRecomendacion,
+  calcularDiasConRiesgoHelada,
+  esPronosticoValido,
+  round1,
+} from '../services/recomendacion.js';
 import type {
   ClimaDisponible,
   PrecioDisponible,
-  PronosticoDia,
 } from '../services/recomendacion.js';
 import {
   obtenerAnioCampaniaVigente,
   obtenerDatosCatalogoRotacion,
   parsearCampania,
 } from '../services/rotacion.js';
-
-const round1 = (valor: number): number => Math.round(valor * 10) / 10;
 
 /**
  * Resuelve el clima sin propagar errores: si Open-Meteo falla se intenta la
@@ -23,7 +25,7 @@ const round1 = (valor: number): number => Math.round(valor * 10) / 10;
 async function obtenerClimaDisponible(parcelaId: string): Promise<ClimaDisponible> {
   try {
     const pronostico = await obtenerPronostico(parcelaId);
-    if (pronostico) {
+    if (pronostico && esPronosticoValido(pronostico.pronostico)) {
       return {
         fuente: pronostico.stale ? 'cache' : 'live',
         antiguedadHoras: round1(
@@ -38,11 +40,11 @@ async function obtenerClimaDisponible(parcelaId: string): Promise<ClimaDisponibl
 
   try {
     const cache = await prisma.pronosticoClima.findUnique({ where: { parcelaId } });
-    if (cache) {
+    if (cache && esPronosticoValido(cache.datos)) {
       return {
         fuente: 'cache',
         antiguedadHoras: round1((Date.now() - cache.fetchedAt.getTime()) / 3_600_000),
-        dias: cache.datos as unknown as PronosticoDia[],
+        dias: cache.datos,
       };
     }
   } catch {
@@ -95,23 +97,32 @@ export const recomendacionRoutes: FastifyPluginAsync = async (app) => {
 
         const clima = await obtenerClimaDisponible(parcelaId);
 
-        let precios: PrecioDisponible;
-        try {
-          const referencia = await obtenerPreciosReferencia(catalogo.map((c) => c.nombre));
-          precios = {
-            fuente: referencia.fuente,
-            antiguedadDias: referencia.antiguedadDias,
-            moneda: referencia.moneda,
-            valores: referencia.valores,
-          };
-        } catch {
-          precios = {
-            fuente: 'no_disponible',
-            antiguedadDias: null,
-            moneda: 'USD/t',
-            valores: {},
-          };
+        const valoresPrecios: Record<string, number> = {};
+        let fechaMasReciente: Date | null = null;
+        for (const c of catalogo) {
+          try {
+            const precio = await obtenerUltimoPrecioCultivo(c.nombre);
+            if (precio) {
+              valoresPrecios[c.nombre] = precio.valor;
+              if (fechaMasReciente === null || precio.fecha > fechaMasReciente) {
+                fechaMasReciente = precio.fecha;
+              }
+            }
+          } catch {
+            // Se ignora error por cultivo individual
+          }
         }
+
+        const tienePrecios = Object.keys(valoresPrecios).length > 0;
+        const precios: PrecioDisponible = {
+          fuente: tienePrecios ? 'bd' : 'no_disponible',
+          antiguedadDias:
+            fechaMasReciente === null
+              ? null
+              : Math.floor((Date.now() - fechaMasReciente.getTime()) / 86_400_000),
+          moneda: 'USD/t',
+          valores: valoresPrecios,
+        };
 
         const resultado = calcularRecomendacion({
           catalogo,
@@ -128,10 +139,9 @@ export const recomendacionRoutes: FastifyPluginAsync = async (app) => {
         const cultivoRecomendado = resultado.recomendacion
           ? catalogo.find((c) => c.nombre === resultado.recomendacion?.cultivo)
           : undefined;
-        const umbralHelada = cultivoRecomendado?.tempMinCritica ?? 0;
         const diasConRiesgoHelada = resultado.recomendacion
-          ? clima.dias.filter((d) => d.tempMin <= umbralHelada).length
-          : 0;
+          ? calcularDiasConRiesgoHelada(cultivoRecomendado?.tempMinCritica, clima.dias)
+          : null;
 
         return {
           parcela: { id: parcela.id, nombre: parcela.nombre },

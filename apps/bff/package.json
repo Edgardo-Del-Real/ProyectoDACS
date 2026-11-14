@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Backend For Frontend de ProyectoDACS — única API que consume el frontend",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "eslint .",

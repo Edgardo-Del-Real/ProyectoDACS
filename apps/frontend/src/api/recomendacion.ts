@@ -11,7 +11,7 @@ export interface ClimaUtilizado {
   fuente: 'live' | 'cache' | 'no_disponible';
   antiguedadHoras: number | null;
   tempMinProxima: number | null;
-  diasConRiesgoHelada: number;
+  diasConRiesgoHelada: number | null;
   dias: DiaClima[];
 }
 
