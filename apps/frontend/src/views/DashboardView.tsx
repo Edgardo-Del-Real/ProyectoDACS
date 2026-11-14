@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { PanelAlertas } from '../components/PanelAlertas';
 import { eliminarParcela } from '../api/parcelas';
 import { ApiError } from '../api/http';
 
@@ -35,6 +36,7 @@ export const DashboardView: React.FC = () => {
 
   const [climaPrincipal, setClimaPrincipal] = useState<PronosticoResponse | null>(null);
   const [cargandoClima, setCargandoClima] = useState<boolean>(false);
+  const [revisionAlertas, setRevisionAlertas] = useState<number>(0);
 
   // Eliminación de parcelas: el diálogo confirma, el handler ejecuta.
   const [parcelaAEliminar, setParcelaAEliminar] = useState<Parcela | null>(null);
@@ -58,6 +60,7 @@ export const DashboardView: React.FC = () => {
       if (res.ok) {
         const data: PronosticoResponse = await res.json();
         setClimaPrincipal(data);
+        setRevisionAlertas((r) => r + 1);
       }
     } catch (err) {
       console.error('Error al cargar clima de la parcela principal:', err);
@@ -117,6 +120,7 @@ export const DashboardView: React.FC = () => {
       if (climaPrincipal?.parcelaId === parcelaAEliminar.id) {
         setClimaPrincipal(null);
       }
+      setRevisionAlertas((r) => r + 1);
       setParcelaAEliminar(null);
     } catch (err) {
       setErrorAccion(
@@ -248,6 +252,9 @@ export const DashboardView: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Panel de Alertas de Helada y Estrés Hídrico (US-06) */}
+          <PanelAlertas tieneParcelas={parcelas.length > 0} revision={revisionAlertas} />
         </div>
 
         {/* Columna Derecha: Clima hiperlocal de la parcela */}

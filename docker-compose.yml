@@ -38,6 +38,9 @@ services:
       - .:/app
     ports:
       - "8090:8080"
+    env_file:
+      - path: apps/bff/.env
+        required: false
     environment:
       PORT: "8080"
       HOST: "0.0.0.0"

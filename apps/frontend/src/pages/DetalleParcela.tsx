@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { MapaDetalleParcela } from '../components/MapaDetalleParcela';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PlanRotacion } from '../components/PlanRotacion';
+import { PanelAlertas } from '../components/PanelAlertas';
 import { actualizarNombreParcela, eliminarParcela } from '../api/parcelas';
 import type { ParcelaDetalleResponse } from '../api/parcelas';
 import { ApiError } from '../api/http';
@@ -501,30 +502,45 @@ export function DetalleParcela() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 pt-2">
-          {pronostico.pronostico.map((dia) => (
-            <div
-              key={dia.fecha}
-              className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-emerald-200 hover:shadow-xs transition text-center space-y-1.5"
-            >
-              <div className="text-xs font-bold text-slate-800 capitalize tracking-tight">
-                {new Date(dia.fecha).toLocaleDateString('es-AR', {
-                  weekday: 'short',
-                  day: 'numeric',
-                })}
+          {pronostico.pronostico.map((dia, index) => {
+            const riesgoHelada72h = index < 3 && dia.tempMin <= 0;
+            return (
+              <div
+                key={dia.fecha}
+                className={`p-3.5 rounded-xl border transition text-center space-y-1.5 ${
+                  riesgoHelada72h
+                    ? 'border-sky-300 bg-sky-50/80 shadow-xs'
+                    : 'border-slate-200 bg-slate-50/70 hover:bg-white hover:border-emerald-200 hover:shadow-xs'
+                }`}
+              >
+                <div className="text-xs font-bold text-slate-800 capitalize tracking-tight">
+                  {new Date(dia.fecha).toLocaleDateString('es-AR', {
+                    weekday: 'short',
+                    day: 'numeric',
+                  })}
+                </div>
+                {riesgoHelada72h && (
+                  <div className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-sky-100 text-sky-900 border border-sky-200 inline-block">
+                    ❄️ Helada
+                  </div>
+                )}
+                <div className="text-xs text-red-600 font-semibold">
+                  Máx: <span className="font-bold">{dia.tempMax}°C</span>
+                </div>
+                <div className="text-xs text-blue-600 font-semibold">
+                  Mín: <span className="font-bold">{dia.tempMin}°C</span>
+                </div>
+                <div className="text-xs text-slate-600 font-medium pt-1 border-t border-slate-200/60">
+                  🌧️ {dia.precipitacion} mm
+                </div>
               </div>
-              <div className="text-xs text-red-600 font-semibold">
-                Máx: <span className="font-bold">{dia.tempMax}°C</span>
-              </div>
-              <div className="text-xs text-blue-600 font-semibold">
-                Mín: <span className="font-bold">{dia.tempMin}°C</span>
-              </div>
-              <div className="text-xs text-slate-600 font-medium pt-1 border-t border-slate-200/60">
-                🌧️ {dia.precipitacion} mm
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+
+      {/* --- SECCIÓN 1B: ALERTAS DE HELADA Y ESTRÉS HÍDRICO DE LA PARCELA (US-06) --- */}
+      {id && <PanelAlertas parcelaId={id} tieneParcelas={true} />}
 
       {/* --- SECCIÓN 2: HISTORIAL DE CULTIVOS POR CAMPAÑA (US-04) --- */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
