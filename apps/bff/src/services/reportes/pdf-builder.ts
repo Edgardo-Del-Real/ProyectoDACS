@@ -557,24 +557,12 @@ export class PdfDocumentBuilder {
 
     // Header PDF estándar
     const header = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
-    let currentByteOffset = Buffer.byteLength(header, 'latin1');
-
-    const addObject = (content: string): number => {
-      const objIndex = bodyObjects.length + 1;
-      offsets.push(currentByteOffset);
-      const objStr = `${objIndex} 0 obj\n${content}\nendobj\n`;
-      currentByteOffset += Buffer.byteLength(objStr, 'latin1');
-      bodyObjects.push(objStr);
-      return objIndex;
-    };
 
     // Objeto 1: Catalog
     // Objeto 2: Pages container
     // Objetos 3-7: Fuentes estándar Type1 con codificación WinAnsi
-    const fontObjectsCount = 5;
     const catalogObjIndex = 1;
     const pagesObjIndex = 2;
-    const firstFontObjIndex = 3;
 
     // Añadir placeholders temporales para Catalog y Pages
     bodyObjects.push(''); // 1 Catalog
@@ -614,7 +602,6 @@ export class PdfDocumentBuilder {
       const pageStream = this.pages[i];
 
       // Pie de página institucional automático en cada página
-      const footerY = this.pageHeight - 24;
       const [fr, fg, fb] = hexToPdfRgb('#64748b');
       pageStream.operations.push('q');
       pageStream.operations.push('BT');

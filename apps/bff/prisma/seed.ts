@@ -403,7 +403,7 @@ export async function main() {
     },
   });
 
-  await (prisma as any).asociacionProductor.upsert({
+  await prisma.asociacionProductor.upsert({
     where: {
       tecnicoId_productorId: {
         tecnicoId: tecnico.id,

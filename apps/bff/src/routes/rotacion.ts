@@ -1,5 +1,4 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { prisma } from '../db.js';
 import { buscarParcelaConAcceso } from '../services/reportes/informe-pdf.js';
 import {
   HORIZONTE_MAXIMO,

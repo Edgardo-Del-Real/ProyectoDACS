@@ -236,7 +236,7 @@ export async function recopilarDatosInforme(
   }
 
   // 1. Centroide de la parcela con Turf
-  let centroide: [number, number] | null = null;
+  let centroide: [number, number] | null;
   try {
     const polygonFeature = turf.polygon((parcela.poligono as unknown as Polygon).coordinates);
     const centerPoint = turf.centroid(polygonFeature);
@@ -393,7 +393,7 @@ export async function recopilarDatosInforme(
     if (!mapaPrecios.has(p.cultivo)) {
       mapaPrecios.set(p.cultivo, {
         cultivo: p.cultivo,
-        posicion: (p as any).posicion ?? 'DISPONIBLE',
+        posicion: p.posicion ?? 'DISPONIBLE',
         valorUsd: p.valor,
         fuente: p.fuente,
         fecha: p.fecha.toISOString().split('T')[0],
@@ -752,7 +752,7 @@ export class InformePdfService {
       ]);
     }
 
-    y = pdf.drawTable({
+    pdf.drawTable({
       x: margin,
       y,
       colWidths,
