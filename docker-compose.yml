@@ -6,7 +6,9 @@ services:
       POSTGRES_PASSWORD: dacs
       POSTGRES_DB: dacs
     ports:
-      - "5432:5432"
+      # Puerto del host configurable: si ya tenés un PostgreSQL local en 5432,
+      # definí DB_PORT=5433 en el .env de la raíz.
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -38,6 +40,9 @@ services:
       - .:/app
     ports:
       - "8090:8080"
+    env_file:
+      - path: apps/bff/.env
+        required: false
     environment:
       PORT: "8080"
       HOST: "0.0.0.0"

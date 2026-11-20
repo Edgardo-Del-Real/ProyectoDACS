@@ -35,7 +35,7 @@ export const openMeteoBreaker = new CircuitBreaker({
   },
 });
 
-interface PronosticoDia {
+export interface PronosticoDia {
   fecha: string;
   tempMax: number;
   tempMin: number;

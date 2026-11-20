@@ -350,3 +350,40 @@ export async function obtenerTendenciaMercado(
     stale: !ultimoPunto || esCotizacionStale(ultimoPunto.fecha),
   };
 }
+
+export interface UltimoPrecioCultivo {
+  valor: number;
+  fecha: Date;
+  moneda: string;
+}
+
+/**
+ * Devuelve el precio más reciente para un cultivo específico, priorizando
+ * la posición DISPONIBLE (spot). Filtra por cultivo en base de datos sin
+ * traer toda la tabla de precios.
+ */
+export async function obtenerUltimoPrecioCultivo(
+  cultivoInput: string,
+): Promise<UltimoPrecioCultivo | null> {
+  let cultivo: CultivoMercado;
+  try {
+    cultivo = normalizarCultivoMercado(cultivoInput);
+  } catch {
+    return null;
+  }
+
+  const spot = await prisma.precio.findFirst({
+    where: { cultivo, posicion: POSICION_SPOT },
+    orderBy: { fecha: 'desc' },
+    select: { valor: true, fecha: true, moneda: true },
+  });
+
+  if (spot) return spot;
+
+  return prisma.precio.findFirst({
+    where: { cultivo },
+    orderBy: { fecha: 'desc' },
+    select: { valor: true, fecha: true, moneda: true },
+  });
+}
+
