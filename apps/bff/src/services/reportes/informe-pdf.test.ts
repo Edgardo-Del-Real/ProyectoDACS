@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PdfDocumentBuilder, sanitizePdfText } from './pdf-builder.js';
-import type { SolicitanteInforme } from './informe-pdf.js';
+import {
+  evaluarAccesoParcela,
+  type SolicitanteInforme,
+} from './informe-pdf.js';
 
 describe('PdfDocumentBuilder (US-11)', () => {
   it('genera un buffer PDF estándar válido que inicia con %PDF-1.4 y concluye con %%EOF', () => {
@@ -115,8 +118,7 @@ describe('sanitizePdfText (WinAnsiEncoding)', () => {
   });
 });
 
-describe('verificarPermisoInforme — Reglas de Autorización US-11 CA 3', () => {
-  // Simulador de repositorio en memoria para validar la lógica pura sin acople de base de datos
+describe('evaluarAccesoParcela — Reglas de Autorización US-11 CA 3', () => {
   const USUARIO_PRODUCTOR: SolicitanteInforme = {
     id: 'usr_productor_1',
     email: 'productor@dacs.com',
@@ -145,39 +147,33 @@ describe('verificarPermisoInforme — Reglas de Autorización US-11 CA 3', () =>
     hectareas: 120.0,
   };
 
-  it('permite el acceso si el usuario es el dueño legítimo de la parcela', async () => {
-    // Función de autorización pura
-    const evaluar = (usuario: SolicitanteInforme, parcelaUserId: string, asociados: string[]) => {
-      if (usuario.id === parcelaUserId) return { permitida: true, motivo: 'PROPIETARIO' };
-      if (asociados.includes(parcelaUserId)) return { permitida: true, motivo: 'TECNICO_ASOCIADO' };
-      return { permitida: false, motivo: 'FORBIDDEN' };
-    };
-
-    const res = evaluar(USUARIO_PRODUCTOR, PARCELA_TEST.userId, []);
+  it('permite el acceso si el usuario es el dueño legítimo de la parcela (PROPIETARIO)', () => {
+    const res = evaluarAccesoParcela(USUARIO_PRODUCTOR, PARCELA_TEST.userId, false);
     assert.equal(res.permitida, true);
     assert.equal(res.motivo, 'PROPIETARIO');
   });
 
-  it('permite el acceso si el usuario es un técnico extensionista con el productor asociado (US-11)', async () => {
-    const evaluar = (usuario: SolicitanteInforme, parcelaUserId: string, asociados: string[]) => {
-      if (usuario.id === parcelaUserId) return { permitida: true, motivo: 'PROPIETARIO' };
-      if (asociados.includes(parcelaUserId)) return { permitida: true, motivo: 'TECNICO_ASOCIADO' };
-      return { permitida: false, motivo: 'FORBIDDEN' };
-    };
-
-    const res = evaluar(USUARIO_TECNICO_ASOCIADO, PARCELA_TEST.userId, [USUARIO_PRODUCTOR.id]);
+  it('permite el acceso si el usuario es un técnico extensionista con el productor asociado (US-11)', () => {
+    const res = evaluarAccesoParcela(USUARIO_TECNICO_ASOCIADO, PARCELA_TEST.userId, true);
     assert.equal(res.permitida, true);
     assert.equal(res.motivo, 'TECNICO_ASOCIADO');
   });
 
-  it('rechaza con 403 Forbidden si la parcela no es propia ni de un productor asociado (US-11 CA 3)', async () => {
-    const evaluar = (usuario: SolicitanteInforme, parcelaUserId: string, asociados: string[]) => {
-      if (usuario.id === parcelaUserId) return { permitida: true, motivo: 'PROPIETARIO' };
-      if (asociados.includes(parcelaUserId)) return { permitida: true, motivo: 'TECNICO_ASOCIADO' };
-      return { permitida: false, motivo: 'FORBIDDEN' };
-    };
+  it('rechaza con 403 Forbidden si el usuario es técnico pero no está asociado al productor', () => {
+    const res = evaluarAccesoParcela(USUARIO_TECNICO_ASOCIADO, PARCELA_TEST.userId, false);
+    assert.equal(res.permitida, false);
+    assert.equal(res.motivo, 'FORBIDDEN');
+    assert.ok(res.error?.includes('Acceso denegado'));
+  });
 
-    const res = evaluar(USUARIO_AJENO, PARCELA_TEST.userId, []);
+  it('rechaza con 403 Forbidden si un usuario no técnico intenta acceder a parcela ajena aun con supuesto flag asociado', () => {
+    const res = evaluarAccesoParcela(USUARIO_AJENO, PARCELA_TEST.userId, true);
+    assert.equal(res.permitida, false);
+    assert.equal(res.motivo, 'FORBIDDEN');
+  });
+
+  it('rechaza con 403 Forbidden si la parcela no es propia ni de un productor asociado (US-11 CA 3)', () => {
+    const res = evaluarAccesoParcela(USUARIO_AJENO, PARCELA_TEST.userId, false);
     assert.equal(res.permitida, false);
     assert.equal(res.motivo, 'FORBIDDEN');
   });

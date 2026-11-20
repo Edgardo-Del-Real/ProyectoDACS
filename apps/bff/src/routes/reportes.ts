@@ -72,6 +72,7 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         return reply
           .header('Content-Type', 'application/pdf')
           .header('Content-Disposition', `attachment; filename="${filename}"`)
+          .header('Content-Length', pdfBuffer.length)
           .send(pdfBuffer);
       } catch (error) {
         request.log.error({ err: error, parcelaId }, 'Error al generar informe PDF de la parcela');
@@ -146,12 +147,19 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         security: [{ bearerAuth: [] }],
         response: {
           401: errorSchema,
+          403: errorSchema,
           500: errorSchema,
         },
       },
       preHandler: [app.authenticate],
     },
-    async (request) => {
+    async (request, reply) => {
+      if (request.user.rol !== 'TECNICO') {
+        return reply.code(403).send({
+          error: 'Acceso denegado: solo los técnicos extensionistas pueden consultar productores asesorados',
+        });
+      }
+
       const tecnicoId = request.user.id;
 
       const asociaciones = await prisma.asociacionProductor.findMany({
@@ -206,6 +214,7 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         response: {
           400: errorSchema,
           401: errorSchema,
+          403: errorSchema,
           404: errorSchema,
           500: errorSchema,
         },
@@ -213,6 +222,12 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [app.authenticate],
     },
     async (request, reply) => {
+      if (request.user.rol !== 'TECNICO') {
+        return reply.code(403).send({
+          error: 'Acceso denegado: solo los técnicos extensionistas pueden vincular productores asesorados',
+        });
+      }
+
       const tecnicoId = request.user.id;
       const { email, productorId } = request.body || {};
 
@@ -226,7 +241,7 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         where: email
           ? { email: email.toLowerCase().trim() }
           : { id: productorId },
-        select: { id: true, nombre: true, email: true },
+        select: { id: true, nombre: true, email: true, rol: true },
       });
 
       if (!productor) {
@@ -236,6 +251,12 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
       if (productor.id === tecnicoId) {
         return reply.code(400).send({
           error: 'No podés asociarte a vos mismo como productor asesorado',
+        });
+      }
+
+      if (productor.rol !== 'AGRICULTOR') {
+        return reply.code(400).send({
+          error: 'Solo se pueden vincular cuentas de usuarios con rol agricultor/productor',
         });
       }
 
@@ -252,7 +273,11 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(200).send({
           mensaje: 'El productor ya se encuentra asociado a tu cuenta técnica',
           asociacionId: existente.id,
-          productor,
+          productor: {
+            id: productor.id,
+            nombre: productor.nombre,
+            email: productor.email,
+          },
         });
       }
 
@@ -266,7 +291,11 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(201).send({
         mensaje: 'Productor asociado con éxito',
         asociacionId: nueva.id,
-        productor,
+        productor: {
+          id: productor.id,
+          nombre: productor.nombre,
+          email: productor.email,
+        },
       });
     },
   );
@@ -286,6 +315,7 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         },
         response: {
           401: errorSchema,
+          403: errorSchema,
           404: errorSchema,
           500: errorSchema,
         },
@@ -293,6 +323,12 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [app.authenticate],
     },
     async (request, reply) => {
+      if (request.user.rol !== 'TECNICO') {
+        return reply.code(403).send({
+          error: 'Acceso denegado: solo los técnicos extensionistas pueden gestionar asociaciones de productores',
+        });
+      }
+
       const tecnicoId = request.user.id;
       const { productorId } = request.params;
 

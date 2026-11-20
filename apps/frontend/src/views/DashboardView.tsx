@@ -122,7 +122,7 @@ export const DashboardView: React.FC = () => {
     } finally {
       setCargando(false);
     }
-  }, [cargarClimaParcela]);
+  }, [cargarClimaParcela, user?.rol]);
 
   const handleConfirmarEliminar = async () => {
     if (!parcelaAEliminar) return;

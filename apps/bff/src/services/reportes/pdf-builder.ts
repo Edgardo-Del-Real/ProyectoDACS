@@ -439,6 +439,11 @@ export class PdfDocumentBuilder {
 
   /**
    * Dibuja una tabla con cabecera estilizada, filas alternadas y soporte de multilínea automático por celda.
+   *
+   * Nota de diseño / paginación: La tabla se dibuja secuencialmente hacia abajo calculando la altura dinámica
+   * de cada fila en la página actual. En la implementación actual para reportes fijos (US-11), el lote
+   * de 4 años encaja dentro de los márgenes de la página A4. Si en el futuro se requiriese un horizonte
+   * arbitrario de filas, debe gestionarse la fragmentación con `addPage()` para evitar desbordes visuales.
    */
   public drawTable(options: TableOptions): number {
     const {

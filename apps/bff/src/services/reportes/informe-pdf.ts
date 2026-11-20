@@ -89,6 +89,39 @@ export type ResultadoPermisoInforme =
   | { permitida: true; parcela: { id: string; userId: string; nombre: string | null; hectareas: number } }
   | { permitida: false; motivo: 'NOT_FOUND' | 'FORBIDDEN'; error: string };
 
+export interface EvaluacionAcceso {
+  permitida: boolean;
+  motivo: 'PROPIETARIO' | 'TECNICO_ASOCIADO' | 'FORBIDDEN';
+  error?: string;
+}
+
+/**
+ * Evalúa las reglas de autorización puras para el acceso a parcelas e informes (US-11 CA 3):
+ * - Es permitido si el usuario es el dueño de la parcela (PROPIETARIO).
+ * - Es permitido si el usuario tiene rol 'TECNICO' y existe una asociación activa con el dueño (TECNICO_ASOCIADO).
+ * - Cualquier otro caso se rechaza con FORBIDDEN.
+ */
+export function evaluarAccesoParcela(
+  usuario: { id: string; rol?: string },
+  parcelaUserId: string,
+  esAsociadoActivo: boolean,
+): EvaluacionAcceso {
+  if (parcelaUserId === usuario.id) {
+    return { permitida: true, motivo: 'PROPIETARIO' };
+  }
+
+  if (usuario.rol === 'TECNICO' && esAsociadoActivo) {
+    return { permitida: true, motivo: 'TECNICO_ASOCIADO' };
+  }
+
+  return {
+    permitida: false,
+    motivo: 'FORBIDDEN',
+    error:
+      'Acceso denegado: la parcela no te pertenece ni pertenece a un productor asociado a tu cuenta técnica.',
+  };
+}
+
 /**
  * Valida la autorización para consultar y descargar el informe de una parcela (US-11 CA 3):
  * - Es permitido si la parcela pertenece al usuario autenticado.
@@ -124,15 +157,17 @@ export async function verificarPermisoInforme(
   }
 
   // 2. Técnico extensionista con asociación activa con el productor dueño
-  const asociacion = await prisma.asociacionProductor.findFirst({
-    where: {
-      tecnicoId: usuario.id,
-      productorId: parcela.userId,
-    },
-  });
+  if (usuario.rol === 'TECNICO') {
+    const asociacion = await prisma.asociacionProductor.findFirst({
+      where: {
+        tecnicoId: usuario.id,
+        productorId: parcela.userId,
+      },
+    });
 
-  if (asociacion) {
-    return { permitida: true, parcela };
+    if (asociacion) {
+      return { permitida: true, parcela };
+    }
   }
 
   // 3. Acceso denegado (US-11 Criterio 3)
@@ -150,7 +185,11 @@ export async function verificarPermisoInforme(
  * - Es permitido si el usuario es técnico extensionista y el dueño de la parcela es un productor asociado a él.
  * Devuelve la parcela completa si tiene acceso autorizado, o null si la parcela no existe o no tiene permisos.
  */
-export async function buscarParcelaConAcceso(parcelaId: string, userId: string) {
+export async function buscarParcelaConAcceso(
+  parcelaId: string,
+  userId: string,
+  userRol?: string,
+) {
   const parcela = await prisma.parcela.findUnique({
     where: { id: parcelaId },
   });
@@ -164,7 +203,12 @@ export async function buscarParcelaConAcceso(parcelaId: string, userId: string) 
     return parcela;
   }
 
-  // 2. Técnico extensionista asociado al productor titular
+  // 2. Si se proporcionó rol y no es técnico, no procede
+  if (userRol && userRol !== 'TECNICO') {
+    return null;
+  }
+
+  // 3. Técnico extensionista asociado al productor titular
   const asociacion = await prisma.asociacionProductor.findFirst({
     where: {
       tecnicoId: userId,
@@ -385,7 +429,7 @@ export async function recopilarDatosInforme(
       cultivo: { in: cultivosEvaluados },
     },
     orderBy: { fecha: 'desc' },
-    take: 10,
+    distinct: ['cultivo'],
   });
 
   const mapaPrecios = new Map<string, PrecioReferenciaInforme>();
@@ -419,6 +463,7 @@ export async function recopilarDatosInforme(
   // 5. Parámetros económicos y proyección de margen bruto (US-10 / US-11)
   const paramEco = await prisma.parametroEconomico.findFirst({
     where: { cultivo: cultivoSugerido.cultivo },
+    orderBy: { fechaVigenteDesde: 'desc' },
   });
 
   const retencionPct = paramEco?.retencionPct ?? 12.0;
