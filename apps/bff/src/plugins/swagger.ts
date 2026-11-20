@@ -34,6 +34,7 @@ export async function setupSwagger(app: FastifyInstance): Promise<void> {
         { name: 'Alertas', description: 'Alertas de helada y estrés hídrico por email con deduplicación' },
         { name: 'Campanias', description: 'Historial de cultivos y rotaciones' },
         { name: 'Rotacion', description: 'Plan de rotación plurianual de cultivos' },
+        { name: 'Reportes', description: 'Informes técnicos en PDF con planificación y proyecciones (US-11)' },
         { name: 'Sistema', description: 'Monitoreo de salud y disponibilidad (RNF-16)' },
       ],
     },

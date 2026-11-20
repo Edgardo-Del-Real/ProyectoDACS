@@ -3,6 +3,7 @@ import type { Polygon } from 'geojson';
 import type { Prisma } from '@prisma/client';
 import * as turf from '@turf/turf';
 import { prisma } from '../db.js';
+import { buscarParcelaConAcceso } from '../services/reportes/informe-pdf.js';
 
 /**
  * Área máxima permitida por parcela (hectáreas). Debe mantenerse sincronizada
@@ -255,24 +256,20 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const userId = request.user.id;
       const { id } = request.params;
 
-      // Se proyectan solo los campos que el cliente necesita: nunca se expone
-      // `userId` ni columnas internas en la respuesta HTTP.
-      const parcela = await prisma.parcela.findFirst({
-        where: { id, userId },
-        select: {
-          id: true,
-          nombre: true,
-          poligono: true,
-          hectareas: true,
-          createdAt: true,
-        },
-      });
+      // Acceso permitido al dueño o a técnicos extensionistas con asociación activa (US-11)
+      const parcela = await buscarParcelaConAcceso(id, userId);
 
       if (!parcela) {
         return reply.code(404).send({ error: 'Parcela no encontrada' });
       }
 
-      return parcela;
+      return {
+        id: parcela.id,
+        nombre: parcela.nombre,
+        poligono: parcela.poligono,
+        hectareas: parcela.hectareas,
+        createdAt: parcela.createdAt,
+      };
     },
   );
 
@@ -399,10 +396,8 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const userId = request.user.id;
       const parcelaId = request.params.id;
 
-      // Validar ownership
-      const parcela = await prisma.parcela.findFirst({
-        where: { id: parcelaId, userId },
-      });
+      // Validar ownership o técnico extensionista asociado (US-11)
+      const parcela = await buscarParcelaConAcceso(parcelaId, userId);
 
       if (!parcela) {
         return reply.code(404).send({ error: 'Parcela no encontrada' });
@@ -446,7 +441,7 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const parcelaId = request.params.id;
       const { cultivo, campania, rindeReal, observaciones } = request.body;
 
-      // Validar ownership
+      // Validar ownership: solo el dueño puede modificar campañas
       const parcela = await prisma.parcela.findFirst({
         where: { id: parcelaId, userId },
       });
@@ -488,7 +483,7 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const { id: parcelaId, campaniaId } = request.params;
       const { cultivo, campania, rindeReal, observaciones } = request.body;
 
-      // Validar ownership
+      // Validar ownership: solo el dueño puede editar campañas
       const parcela = await prisma.parcela.findFirst({
         where: { id: parcelaId, userId },
       });
@@ -537,7 +532,7 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const userId = request.user.id;
       const { id: parcelaId, campaniaId } = request.params;
 
-      // Validar ownership
+      // Validar ownership: solo el dueño puede editar campañas
       const parcela = await prisma.parcela.findFirst({
         where: { id: parcelaId, userId },
       });

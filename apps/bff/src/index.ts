@@ -9,6 +9,7 @@ import { parcelasRoutes } from './routes/parcelas.js';
 import { climaRoutes } from './routes/clima.js';
 import { rotacionRoutes } from './routes/rotacion.js';
 import { mercadoRoutes } from './routes/mercado.js';
+import { reportesRoutes } from './routes/reportes.js';
 import { recomendacionRoutes } from './routes/recomendacion.js';
 import { alertasRoutes } from './routes/alertas.js';
 import { healthRoutes } from './routes/health.js';
@@ -97,6 +98,9 @@ await app.register(recomendacionRoutes, { prefix: '/api/parcelas' });
 
 // Rutas de alertas climáticas y estrés hídrico (US-06)
 await app.register(alertasRoutes, { prefix: '/api/alertas' });
+
+// Rutas de informes técnicos en PDF y asesoramiento (US-11)
+await app.register(reportesRoutes, { prefix: '/api' });
 
 const detenerWorkerAlertas = iniciarWorkerAlertas(app.log);
 app.addHook('onClose', async () => {

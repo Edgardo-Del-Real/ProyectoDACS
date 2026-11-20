@@ -6,6 +6,7 @@ import { PlanRotacion } from '../components/PlanRotacion';
 import { PanelAlertas } from '../components/PanelAlertas';
 import { actualizarNombreParcela, eliminarParcela } from '../api/parcelas';
 import type { ParcelaDetalleResponse } from '../api/parcelas';
+import { descargarInformePdf } from '../api/reportes';
 import { ApiError } from '../api/http';
 
 interface PronosticoDia {
@@ -60,6 +61,28 @@ export function DetalleParcela() {
   const [eliminandoParcela, setEliminandoParcela] = useState(false);
   const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
+
+  // Estado para descarga de informe técnico PDF (US-11)
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
+  const [errorPdf, setErrorPdf] = useState<string | null>(null);
+  const [exitoPdf, setExitoPdf] = useState(false);
+
+  const handleDescargarPdf = async () => {
+    if (!id) return;
+    setDescargandoPdf(true);
+    setErrorPdf(null);
+    setExitoPdf(false);
+    try {
+      await descargarInformePdf(id);
+      setExitoPdf(true);
+      setTimeout(() => setExitoPdf(false), 5000);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'No se pudo descargar el informe PDF.';
+      setErrorPdf(msg);
+    } finally {
+      setDescargandoPdf(false);
+    }
+  };
 
   // Estado para Historial de Campañas (US-04)
   const [campanias, setCampanias] = useState<Campania[]>([]);
@@ -406,10 +429,20 @@ export function DetalleParcela() {
         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
           <Link
             to={`/parcelas/${pronostico.parcelaId}/recomendacion`}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm text-center transition"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs text-center transition inline-flex items-center"
           >
             Ver recomendación de cultivo
           </Link>
+          <button
+            type="button"
+            onClick={handleDescargarPdf}
+            disabled={descargandoPdf}
+            title="Descargar informe técnico agronómico en PDF con planificación y proyecciones (US-11)"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>{descargandoPdf ? '⏳' : '📄'}</span>
+            <span>{descargandoPdf ? 'Generando PDF...' : 'Descargar Informe PDF'}</span>
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -429,6 +462,45 @@ export function DetalleParcela() {
           </Link>
         </div>
       </div>
+
+      {/* Feedback de descarga de informe PDF (US-11) */}
+      {errorPdf && (
+        <div
+          role="alert"
+          className="rounded-xl p-4 bg-red-50 border border-red-200 text-red-800 text-sm flex items-start justify-between gap-3"
+        >
+          <div className="flex items-start gap-2.5">
+            <span className="text-lg">⚠️</span>
+            <div>
+              <strong className="font-semibold block">Error al generar informe técnico (US-11)</strong>
+              <span>{errorPdf}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorPdf(null)}
+            className="text-red-700 font-bold hover:text-red-900"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {exitoPdf && (
+        <div
+          role="status"
+          className="rounded-xl p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs sm:text-sm flex items-center justify-between gap-2"
+        >
+          <span>✅ Informe técnico en PDF generado y descargado exitosamente.</span>
+          <button
+            type="button"
+            onClick={() => setExitoPdf(false)}
+            className="text-emerald-700 font-bold hover:text-emerald-900"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Error de la última acción sobre la parcela (renombrar / eliminar) */}
       {errorAccion && (
