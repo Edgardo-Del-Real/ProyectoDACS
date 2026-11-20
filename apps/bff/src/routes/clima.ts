@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db.js';
 import { obtenerPronostico } from '../services/openmeteo.js';
+import { encolarVerificacionParcela } from '../services/alertas/alertas.js';
 
 export const climaRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/parcelas/:id/clima - Obtener pronóstico de 7 días
@@ -35,6 +36,9 @@ export const climaRoutes: FastifyPluginAsync = async (app) => {
         if (!resultado) {
           return reply.code(404).send({ error: 'Pronóstico no disponible' });
         }
+
+        // US-06: Encolar en segundo plano la evaluación de alertas sobre el pronóstico obtenido
+        encolarVerificacionParcela(parcelaId, resultado.pronostico);
 
         return {
           ...resultado,
