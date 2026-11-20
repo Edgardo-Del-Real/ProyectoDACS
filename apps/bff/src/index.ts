@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { setupSwagger } from './plugins/swagger.js';
@@ -8,7 +10,26 @@ import { climaRoutes } from './routes/clima.js';
 import { rotacionRoutes } from './routes/rotacion.js';
 import { mercadoRoutes } from './routes/mercado.js';
 import { recomendacionRoutes } from './routes/recomendacion.js';
+import { alertasRoutes } from './routes/alertas.js';
 import { healthRoutes } from './routes/health.js';
+import { iniciarWorkerAlertas } from './services/alertas/alertas.js';
+
+// Cargar variables de entorno desde .env si process.loadEnvFile existe en Node
+if (typeof process.loadEnvFile === 'function') {
+  const posiblesRutas = [
+    resolve(process.cwd(), 'apps/bff/.env'),
+    resolve(process.cwd(), '.env'),
+  ];
+  const rutaEncontrada = posiblesRutas.find((r) => existsSync(r));
+  if (rutaEncontrada) {
+    try {
+      process.loadEnvFile(rutaEncontrada);
+    } catch (err) {
+      console.error(`[env] Error al parsear archivo de entorno en ${rutaEncontrada}:`, err);
+      throw err;
+    }
+  }
+}
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -73,6 +94,14 @@ await app.register(mercadoRoutes, { prefix: '/api/mercado' });
 
 // Rutas de recomendación de cultivo con puntaje explicable (US-08)
 await app.register(recomendacionRoutes, { prefix: '/api/parcelas' });
+
+// Rutas de alertas climáticas y estrés hídrico (US-06)
+await app.register(alertasRoutes, { prefix: '/api/alertas' });
+
+const detenerWorkerAlertas = iniciarWorkerAlertas(app.log);
+app.addHook('onClose', async () => {
+  detenerWorkerAlertas();
+});
 
 try {
   await app.listen({ port: PORT, host: HOST });

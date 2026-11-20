@@ -31,6 +31,7 @@
     "@types/pg": "^8.23.1",
     "bcryptjs": "^2.4.3",
     "fastify": "^5.12.7",
+    "nodemailer": "^6.10.0",
     "pg": "^8.23.1"
   },
   "devDependencies": {
@@ -38,6 +39,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^6.4.17",
     "eslint": "^10.9.0",
     "globals": "^17.11.0",
     "prisma": "^7.10.0",
