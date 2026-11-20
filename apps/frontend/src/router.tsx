@@ -8,6 +8,7 @@ import { RegistroView } from './views/RegistroView';
 import { MercadoView } from './views/MercadoView';
 import { NuevaParcela } from './pages/NuevaParcela';
 import { DetalleParcela } from './pages/DetalleParcela';
+import { RecomendacionParcela } from './pages/RecomendacionParcela';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 export const AppRouter: React.FC = () => {
@@ -50,6 +51,14 @@ export const AppRouter: React.FC = () => {
             element={
               <ProtectedRoute>
                 <DetalleParcela />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/parcelas/:id/recomendacion"
+            element={
+              <ProtectedRoute>
+                <RecomendacionParcela />
               </ProtectedRoute>
             }
           />

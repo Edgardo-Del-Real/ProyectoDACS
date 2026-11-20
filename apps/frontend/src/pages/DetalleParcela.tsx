@@ -402,7 +402,13 @@ export function DetalleParcela() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          <Link
+            to={`/parcelas/${pronostico.parcelaId}/recomendacion`}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm text-center transition"
+          >
+            Ver recomendación de cultivo
+          </Link>
           <button
             type="button"
             onClick={() => {
