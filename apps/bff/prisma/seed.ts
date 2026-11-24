@@ -370,8 +370,8 @@ export async function main() {
   console.log('ℹ️  Cotizaciones de mercado: se obtienen de la Bolsa de Cereales en runtime.');
 
   // 5. Usuarios de prueba y asociación técnico-productor (Fase 2 / US-11)
-  // Contraseña de acceso para los usuarios de prueba: "1234"
-  const passwordHash = await bcrypt.hash('1234', 10);
+  // Contraseña de acceso para los usuarios de prueba: "12345678"
+  const passwordHash = await bcrypt.hash('12345678', 10);
 
   const productor = await prisma.usuario.upsert({
     where: { email: 'productor@dacs.com' },

@@ -3,7 +3,7 @@ import type { Polygon } from 'geojson';
 import type { Prisma } from '@prisma/client';
 import * as turf from '@turf/turf';
 import { prisma } from '../db.js';
-import { buscarParcelaConAcceso } from '../services/reportes/informe-pdf.js';
+import { buscarParcelaConAcceso } from '../services/acceso-parcela.js';
 
 /**
  * Área máxima permitida por parcela (hectáreas). Debe mantenerse sincronizada
@@ -257,7 +257,7 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const { id } = request.params;
 
       // Acceso permitido al dueño o a técnicos extensionistas con asociación activa (US-11)
-      const parcela = await buscarParcelaConAcceso(id, userId);
+      const parcela = await buscarParcelaConAcceso(id, userId, request.user.rol);
 
       if (!parcela) {
         return reply.code(404).send({ error: 'Parcela no encontrada' });
@@ -397,7 +397,7 @@ export const parcelasRoutes: FastifyPluginAsync = async (app) => {
       const parcelaId = request.params.id;
 
       // Validar ownership o técnico extensionista asociado (US-11)
-      const parcela = await buscarParcelaConAcceso(parcelaId, userId);
+      const parcela = await buscarParcelaConAcceso(parcelaId, userId, request.user.rol);
 
       if (!parcela) {
         return reply.code(404).send({ error: 'Parcela no encontrada' });

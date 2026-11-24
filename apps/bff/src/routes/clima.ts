@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { obtenerPronostico } from '../services/openmeteo.js';
-import { buscarParcelaConAcceso } from '../services/reportes/informe-pdf.js';
+import { buscarParcelaConAcceso } from '../services/acceso-parcela.js';
 import { encolarVerificacionParcela } from '../services/alertas/alertas.js';
 
 export const climaRoutes: FastifyPluginAsync = async (app) => {
@@ -23,7 +23,7 @@ export const climaRoutes: FastifyPluginAsync = async (app) => {
 
       try {
         // Verificar que la parcela pertenece al usuario o a un productor asociado (US-11)
-        const parcela = await buscarParcelaConAcceso(parcelaId, userId);
+        const parcela = await buscarParcelaConAcceso(parcelaId, userId, request.user.rol);
 
         if (!parcela) {
           return reply.code(404).send({ error: 'Parcela no encontrada' });

@@ -34,6 +34,7 @@ export interface PrecioReferenciaInforme {
   valorUsd: number;
   fuente: string;
   fecha: string;
+  esEstimado?: boolean;
 }
 
 export interface ProyeccionEconomicaInforme {
@@ -85,63 +86,27 @@ export interface DatosInformeCompleto {
   proyeccion: ProyeccionEconomicaInforme;
 }
 
+import {
+  evaluarAccesoParcela,
+  buscarParcelaConAcceso,
+  type EvaluacionAcceso,
+} from '../acceso-parcela.js';
+
+export { evaluarAccesoParcela, buscarParcelaConAcceso, type EvaluacionAcceso };
+
 export type ResultadoPermisoInforme =
   | { permitida: true; parcela: { id: string; userId: string; nombre: string | null; hectareas: number } }
-  | { permitida: false; motivo: 'NOT_FOUND' | 'FORBIDDEN'; error: string };
-
-export interface EvaluacionAcceso {
-  permitida: boolean;
-  motivo: 'PROPIETARIO' | 'TECNICO_ASOCIADO' | 'FORBIDDEN';
-  error?: string;
-}
-
-/**
- * Evalúa las reglas de autorización puras para el acceso a parcelas e informes (US-11 CA 3):
- * - Es permitido si el usuario es el dueño de la parcela (PROPIETARIO).
- * - Es permitido si el usuario tiene rol 'TECNICO' y existe una asociación activa con el dueño (TECNICO_ASOCIADO).
- * - Cualquier otro caso se rechaza con FORBIDDEN.
- */
-export function evaluarAccesoParcela(
-  usuario: { id: string; rol?: string },
-  parcelaUserId: string,
-  esAsociadoActivo: boolean,
-): EvaluacionAcceso {
-  if (parcelaUserId === usuario.id) {
-    return { permitida: true, motivo: 'PROPIETARIO' };
-  }
-
-  if (usuario.rol === 'TECNICO' && esAsociadoActivo) {
-    return { permitida: true, motivo: 'TECNICO_ASOCIADO' };
-  }
-
-  return {
-    permitida: false,
-    motivo: 'FORBIDDEN',
-    error:
-      'Acceso denegado: la parcela no te pertenece ni pertenece a un productor asociado a tu cuenta técnica.',
-  };
-}
+  | { permitida: false; motivo: 'NOT_FOUND'; error: string };
 
 /**
  * Valida la autorización para consultar y descargar el informe de una parcela (US-11 CA 3):
- * - Es permitido si la parcela pertenece al usuario autenticado.
- * - Es permitido si el usuario es técnico extensionista y el dueño de la parcela es un productor asociado a él.
- * - Si no es propia ni de un productor asociado, responde 403 Forbidden.
- * - Si la parcela no existe, responde 404 Not Found.
+ * - Anti-enumeración: responde siempre 404 Not Found si la parcela no existe o no tiene permisos.
  */
 export async function verificarPermisoInforme(
   usuario: SolicitanteInforme,
   parcelaId: string,
 ): Promise<ResultadoPermisoInforme> {
-  const parcela = await prisma.parcela.findUnique({
-    where: { id: parcelaId },
-    select: {
-      id: true,
-      userId: true,
-      nombre: true,
-      hectareas: true,
-    },
-  });
+  const parcela = await buscarParcelaConAcceso(parcelaId, usuario.id, usuario.rol);
 
   if (!parcela) {
     return {
@@ -151,72 +116,15 @@ export async function verificarPermisoInforme(
     };
   }
 
-  // 1. Dueño legítimo de la parcela
-  if (parcela.userId === usuario.id) {
-    return { permitida: true, parcela };
-  }
-
-  // 2. Técnico extensionista con asociación activa con el productor dueño
-  if (usuario.rol === 'TECNICO') {
-    const asociacion = await prisma.asociacionProductor.findFirst({
-      where: {
-        tecnicoId: usuario.id,
-        productorId: parcela.userId,
-      },
-    });
-
-    if (asociacion) {
-      return { permitida: true, parcela };
-    }
-  }
-
-  // 3. Acceso denegado (US-11 Criterio 3)
   return {
-    permitida: false,
-    motivo: 'FORBIDDEN',
-    error:
-      'Acceso denegado: la parcela no te pertenece ni pertenece a un productor asociado a tu cuenta técnica.',
-  };
-}
-
-/**
- * Busca una parcela verificando los permisos de acceso (US-11 CA 3):
- * - Es permitido si la parcela pertenece al usuario autenticado (dueño).
- * - Es permitido si el usuario es técnico extensionista y el dueño de la parcela es un productor asociado a él.
- * Devuelve la parcela completa si tiene acceso autorizado, o null si la parcela no existe o no tiene permisos.
- */
-export async function buscarParcelaConAcceso(
-  parcelaId: string,
-  userId: string,
-  userRol?: string,
-) {
-  const parcela = await prisma.parcela.findUnique({
-    where: { id: parcelaId },
-  });
-
-  if (!parcela) {
-    return null;
-  }
-
-  // 1. Dueño legítimo
-  if (parcela.userId === userId) {
-    return parcela;
-  }
-
-  // 2. Si se proporcionó rol y no es técnico, no procede
-  if (userRol && userRol !== 'TECNICO') {
-    return null;
-  }
-
-  // 3. Técnico extensionista asociado al productor titular
-  const asociacion = await prisma.asociacionProductor.findFirst({
-    where: {
-      tecnicoId: userId,
-      productorId: parcela.userId,
+    permitida: true,
+    parcela: {
+      id: parcela.id,
+      userId: parcela.userId,
+      nombre: parcela.nombre,
+      hectareas: parcela.hectareas,
     },
-  });
-
-  return asociacion ? parcela : null;
+  };
 }
 
 /**
@@ -445,15 +353,16 @@ export async function recopilarDatosInforme(
     }
   }
 
-  // Completar precios que falten con valores de referencia
+  // Completar precios que falten con valores de referencia estimados (transparentes para el usuario)
   for (const c of cultivosEvaluados) {
     if (!mapaPrecios.has(c)) {
       mapaPrecios.set(c, {
         cultivo: c,
-        posicion: 'DISPONIBLE',
+        posicion: 'DISPONIBLE (Estimado)',
         valorUsd: PRECIOS_REFERENCIA_FALLBACK[c] ?? 220.0,
-        fuente: 'Bolsa de Cereales de Buenos Aires (FOB Estimado)',
+        fuente: 'Referencia Estimada (Sin cotización oficial reciente)',
         fecha: new Date().toISOString().split('T')[0],
+        esEstimado: true,
       });
     }
   }
@@ -910,7 +819,7 @@ export class InformePdfService {
     const preciosRows = datos.preciosConsiderados.map((p) => [
       p.cultivo,
       p.posicion,
-      `${p.valorUsd.toFixed(2)} USD/tn`,
+      p.esEstimado ? `${p.valorUsd.toFixed(2)} USD/tn (*)` : `${p.valorUsd.toFixed(2)} USD/tn`,
       p.fecha,
       p.fuente,
     ]);
@@ -926,6 +835,16 @@ export class InformePdfService {
       fontSize: 8,
       alignments: ['left', 'left', 'right', 'center', 'left'],
     });
+
+    if (datos.preciosConsiderados.some((p) => p.esEstimado)) {
+      pdf.drawText(
+        '(*) Cotización de referencia estimada ante ausencia de operaciones oficiales recientes registradas.',
+        margin,
+        y + 8,
+        { font: 'Helvetica-Oblique', size: 7, color: '#64748b' },
+      );
+      y += 10;
+    }
 
     // 8. Proyecciones Económicas Estimadas (Margen Bruto)
     y += 16;

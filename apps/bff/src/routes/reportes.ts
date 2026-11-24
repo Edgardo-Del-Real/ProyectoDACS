@@ -1,9 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db.js';
+import { buscarParcelaConAcceso } from '../services/acceso-parcela.js';
 import {
   InformePdfService,
   recopilarDatosInforme,
-  verificarPermisoInforme,
 } from '../services/reportes/informe-pdf.js';
 
 const errorSchema = {
@@ -20,7 +20,7 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         tags: ['Reportes'],
         summary: 'Descargar informe técnico agronómico en PDF con planificación y proyecciones (US-11)',
         description:
-          'Genera y descarga un documento PDF que incluye la parcela, el cultivo sugerido para la próxima campaña, la secuencia de rotación plurianual, el clima hiperlocal y los precios/márgenes económicos considerados. Responde 403 si la parcela no pertenece al usuario ni a un productor asociado a su cuenta técnica (CA 3).',
+          'Genera y descarga un documento PDF con los datos agronómicos, rotación plurianual, clima y cotizaciones de la parcela. Anti-enumeración: responde 404 si la parcela no existe o el usuario no tiene acceso autorizado.',
         security: [{ bearerAuth: [] }],
         params: {
           type: 'object',
@@ -29,7 +29,6 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         },
         response: {
           401: errorSchema,
-          403: errorSchema,
           404: errorSchema,
           500: errorSchema,
         },
@@ -46,22 +45,18 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
       };
 
       try {
-        // Criterio 3: Verificar permisos (dueño o técnico con productor asociado)
-        const permiso = await verificarPermisoInforme(usuario, parcelaId);
+        // Criterio 3 (Anti-enumeración): Solo dueño o técnico con acceso otorgado por el productor
+        const parcela = await buscarParcelaConAcceso(parcelaId, usuario.id, usuario.rol);
 
-        if (!permiso.permitida) {
-          if (permiso.motivo === 'NOT_FOUND') {
-            return reply.code(404).send({ error: permiso.error });
-          }
-          // 403 estricto según especificación US-11 CA 3
-          return reply.code(403).send({ error: permiso.error });
+        if (!parcela) {
+          return reply.code(404).send({ error: 'Parcela no encontrada' });
         }
 
         // Criterios 1 y 2: Generar PDF con planificación y proyecciones
         const pdfBuffer = await InformePdfService.generarPdf(usuario, parcelaId);
 
-        const nombreLimpio = permiso.parcela.nombre
-          ? permiso.parcela.nombre
+        const nombreLimpio = parcela.nombre
+          ? parcela.nombre
             .toLowerCase()
             .replace(/[^a-z0-9_-]/g, '_')
             .replace(/_+/g, '_')
@@ -77,7 +72,7 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
       } catch (error) {
         request.log.error({ err: error, parcelaId }, 'Error al generar informe PDF de la parcela');
         return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Error al generar el informe en PDF',
+          error: 'Error interno al generar el informe técnico en PDF',
         });
       }
     },
@@ -91,7 +86,7 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         tags: ['Reportes'],
         summary: 'Obtener datos consolidados del informe agronómico en JSON (US-11)',
         description:
-          'Devuelve la información estructurada que nutre el informe PDF (parcela, recomendación, rotación, clima, cotizaciones y proyección económica).',
+          'Devuelve la información estructurada que nutre el informe PDF. Anti-enumeración: responde 404 si la parcela no existe o no tiene acceso.',
         security: [{ bearerAuth: [] }],
         params: {
           type: 'object',
@@ -100,7 +95,6 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
         },
         response: {
           401: errorSchema,
-          403: errorSchema,
           404: errorSchema,
           500: errorSchema,
         },
@@ -117,33 +111,225 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
       };
 
       try {
-        const permiso = await verificarPermisoInforme(usuario, parcelaId);
+        const parcela = await buscarParcelaConAcceso(parcelaId, usuario.id, usuario.rol);
 
-        if (!permiso.permitida) {
-          if (permiso.motivo === 'NOT_FOUND') {
-            return reply.code(404).send({ error: permiso.error });
-          }
-          return reply.code(403).send({ error: permiso.error });
+        if (!parcela) {
+          return reply.code(404).send({ error: 'Parcela no encontrada' });
         }
 
         const datos = await recopilarDatosInforme(usuario, parcelaId);
         return datos;
       } catch (error) {
-        request.log.error({ err: error, parcelaId }, 'Error al obtener datos del informe');
+        request.log.error({ err: error, parcelaId }, 'Error al consultar datos del informe');
         return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Error al consultar los datos del informe',
+          error: 'Error interno al consultar los datos del informe',
         });
       }
     },
   );
 
-  // GET /api/tecnico/productores - Listar productores asociados a la cuenta técnica
+  // ==========================================================================
+  // FLUJO DE VINCULACIÓN CON CONSENTIMIENTO (Opción A): El productor otorga acceso
+  // ==========================================================================
+
+  // POST /api/productor/tecnicos - El productor otorga acceso a un técnico extensionista
+  app.post<{
+    Body: { email: string };
+  }>(
+    '/productor/tecnicos',
+    {
+      schema: {
+        tags: ['Reportes'],
+        summary: 'Otorgar acceso de asesor técnico a un extensionista (US-11 / Opción A)',
+        description:
+          'Permite que el productor autorice a un técnico a consultar sus parcelas y generar informes agronómicos.',
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: 'object',
+          required: ['email'],
+          properties: {
+            email: { type: 'string', format: 'email' },
+          },
+        },
+        response: {
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          500: errorSchema,
+        },
+      },
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const productorId = request.user.id;
+      const { email } = request.body || {};
+
+      if (!email || typeof email !== 'string') {
+        return reply.code(400).send({
+          error: 'Debe ingresar el email del técnico extensionista a vincular',
+        });
+      }
+
+      // Respuesta uniforme anti-enumeración: tanto si el email no existe como si no es TECNICO
+      const tecnico = await prisma.usuario.findFirst({
+        where: {
+          email: email.toLowerCase().trim(),
+          rol: 'TECNICO',
+        },
+        select: { id: true, nombre: true, email: true, rol: true },
+      });
+
+      if (!tecnico) {
+        return reply.code(404).send({
+          error: 'No se encontró un técnico extensionista registrado con ese correo electrónico',
+        });
+      }
+
+      if (tecnico.id === productorId) {
+        return reply.code(400).send({
+          error: 'No podés asignarte a vos mismo como asesor técnico',
+        });
+      }
+
+      const existente = await prisma.asociacionProductor.findUnique({
+        where: {
+          tecnicoId_productorId: {
+            tecnicoId: tecnico.id,
+            productorId,
+          },
+        },
+      });
+
+      if (existente) {
+        return reply.code(200).send({
+          mensaje: 'El técnico ya tiene acceso autorizado a tus parcelas',
+          asociacionId: existente.id,
+          tecnico: {
+            id: tecnico.id,
+            nombre: tecnico.nombre,
+            email: tecnico.email,
+          },
+        });
+      }
+
+      const nueva = await prisma.asociacionProductor.create({
+        data: {
+          tecnicoId: tecnico.id,
+          productorId,
+        },
+      });
+
+      return reply.code(201).send({
+        mensaje: 'Técnico extensionista vinculado con éxito',
+        asociacionId: nueva.id,
+        tecnico: {
+          id: tecnico.id,
+          nombre: tecnico.nombre,
+          email: tecnico.email,
+        },
+      });
+    },
+  );
+
+  // GET /api/productor/tecnicos - Listar técnicos autorizados por el productor
+  app.get(
+    '/productor/tecnicos',
+    {
+      schema: {
+        tags: ['Reportes'],
+        summary: 'Listar técnicos extensionistas autorizados por el productor (US-11)',
+        security: [{ bearerAuth: [] }],
+        response: {
+          401: errorSchema,
+          500: errorSchema,
+        },
+      },
+      preHandler: [app.authenticate],
+    },
+    async (request) => {
+      const productorId = request.user.id;
+
+      const asociaciones = await prisma.asociacionProductor.findMany({
+        where: { productorId },
+        include: {
+          tecnico: {
+            select: {
+              id: true,
+              nombre: true,
+              email: true,
+              rol: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return asociaciones.map((a) => ({
+        asociacionId: a.id,
+        fechaAsociacion: a.createdAt.toISOString(),
+        tecnico: a.tecnico,
+      }));
+    },
+  );
+
+  // DELETE /api/productor/tecnicos/:tecnicoId - Revocar acceso a un técnico
+  app.delete<{ Params: { tecnicoId: string } }>(
+    '/productor/tecnicos/:tecnicoId',
+    {
+      schema: {
+        tags: ['Reportes'],
+        summary: 'Revocar acceso de asesor técnico otorgado previamente a un extensionista',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['tecnicoId'],
+          properties: { tecnicoId: { type: 'string' } },
+        },
+        response: {
+          401: errorSchema,
+          404: errorSchema,
+          500: errorSchema,
+        },
+      },
+      preHandler: [app.authenticate],
+    },
+    async (request, reply) => {
+      const productorId = request.user.id;
+      const { tecnicoId } = request.params;
+
+      const asociacion = await prisma.asociacionProductor.findUnique({
+        where: {
+          tecnicoId_productorId: {
+            tecnicoId,
+            productorId,
+          },
+        },
+      });
+
+      if (!asociacion) {
+        return reply.code(404).send({ error: 'Asociación no encontrada' });
+      }
+
+      await prisma.asociacionProductor.delete({
+        where: { id: asociacion.id },
+      });
+
+      return { ok: true, mensaje: 'Acceso técnico revocado con éxito' };
+    },
+  );
+
+  // ==========================================================================
+  // ENDPOINTS DE CONSULTA PARA TÉCNICOS EXTENSIONISTAS
+  // ==========================================================================
+
+  // GET /api/tecnico/productores - Listar productores que han autorizado al técnico
   app.get(
     '/tecnico/productores',
     {
       schema: {
         tags: ['Reportes'],
-        summary: 'Listar productores asociados a la cuenta técnica (US-11)',
+        summary: 'Listar productores que han otorgado acceso a la cuenta técnica (US-11)',
         security: [{ bearerAuth: [] }],
         response: {
           401: errorSchema,
@@ -194,119 +380,13 @@ export const reportesRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
-  // POST /api/tecnico/productores - Asociar un productor a la cuenta técnica por email o ID
-  app.post<{
-    Body: { email?: string; productorId?: string };
-  }>(
-    '/tecnico/productores',
-    {
-      schema: {
-        tags: ['Reportes'],
-        summary: 'Vincular un productor a la cuenta técnica para habilitar informes de asesoramiento (US-11)',
-        security: [{ bearerAuth: [] }],
-        body: {
-          type: 'object',
-          properties: {
-            email: { type: 'string' },
-            productorId: { type: 'string' },
-          },
-        },
-        response: {
-          400: errorSchema,
-          401: errorSchema,
-          403: errorSchema,
-          404: errorSchema,
-          500: errorSchema,
-        },
-      },
-      preHandler: [app.authenticate],
-    },
-    async (request, reply) => {
-      if (request.user.rol !== 'TECNICO') {
-        return reply.code(403).send({
-          error: 'Acceso denegado: solo los técnicos extensionistas pueden vincular productores asesorados',
-        });
-      }
-
-      const tecnicoId = request.user.id;
-      const { email, productorId } = request.body || {};
-
-      if (!email && !productorId) {
-        return reply.code(400).send({
-          error: 'Debe ingresar el email o el id del productor a vincular',
-        });
-      }
-
-      const productor = await prisma.usuario.findFirst({
-        where: email
-          ? { email: email.toLowerCase().trim() }
-          : { id: productorId },
-        select: { id: true, nombre: true, email: true, rol: true },
-      });
-
-      if (!productor) {
-        return reply.code(404).send({ error: 'Productor no encontrado' });
-      }
-
-      if (productor.id === tecnicoId) {
-        return reply.code(400).send({
-          error: 'No podés asociarte a vos mismo como productor asesorado',
-        });
-      }
-
-      if (productor.rol !== 'AGRICULTOR') {
-        return reply.code(400).send({
-          error: 'Solo se pueden vincular cuentas de usuarios con rol agricultor/productor',
-        });
-      }
-
-      const existente = await prisma.asociacionProductor.findUnique({
-        where: {
-          tecnicoId_productorId: {
-            tecnicoId,
-            productorId: productor.id,
-          },
-        },
-      });
-
-      if (existente) {
-        return reply.code(200).send({
-          mensaje: 'El productor ya se encuentra asociado a tu cuenta técnica',
-          asociacionId: existente.id,
-          productor: {
-            id: productor.id,
-            nombre: productor.nombre,
-            email: productor.email,
-          },
-        });
-      }
-
-      const nueva = await prisma.asociacionProductor.create({
-        data: {
-          tecnicoId,
-          productorId: productor.id,
-        },
-      });
-
-      return reply.code(201).send({
-        mensaje: 'Productor asociado con éxito',
-        asociacionId: nueva.id,
-        productor: {
-          id: productor.id,
-          nombre: productor.nombre,
-          email: productor.email,
-        },
-      });
-    },
-  );
-
-  // DELETE /api/tecnico/productores/:productorId - Desvincular productor
+  // DELETE /api/tecnico/productores/:productorId - Técnico se desvincula de asesorar a un productor
   app.delete<{ Params: { productorId: string } }>(
     '/tecnico/productores/:productorId',
     {
       schema: {
         tags: ['Reportes'],
-        summary: 'Desvincular un productor de la cuenta técnica',
+        summary: 'Desvincularse de asesorar a un productor',
         security: [{ bearerAuth: [] }],
         params: {
           type: 'object',

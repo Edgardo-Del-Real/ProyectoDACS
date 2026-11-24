@@ -6,7 +6,7 @@ interface RegisterBody {
   email: string;
   password: string;
   nombre?: string;
-  rol?: 'AGRICULTOR' | 'COOPERATIVA' | 'TECNICO';
+  rol?: 'AGRICULTOR' | 'COOPERATIVA';
 }
 
 interface LoginBody {
@@ -32,7 +32,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
             nombre: { type: 'string' },
             rol: {
               type: 'string',
-              enum: ['AGRICULTOR', 'COOPERATIVA', 'TECNICO'],
+              enum: ['AGRICULTOR', 'COOPERATIVA'],
               default: 'AGRICULTOR',
             },
           },
@@ -59,12 +59,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       // Criterio 4: Guardar contraseña con hash bcrypt
       const passwordHash = await bcrypt.hash(password, 10);
 
+      // Bloqueante seguridad US-11: El registro público nunca permite autoasignarse rol TECNICO.
+      // Las cuentas técnicas son habilitadas administrativamente o sembradas en el seed.
+      const rolFinal = rol === 'COOPERATIVA' ? 'COOPERATIVA' : 'AGRICULTOR';
+
       const user = await prisma.usuario.create({
         data: {
           email: normalizedEmail,
           passwordHash,
           nombre: nombre?.trim() || null,
-          rol,
+          rol: rolFinal,
         },
         select: {
           id: true,

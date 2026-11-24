@@ -81,3 +81,74 @@ export async function obtenerProductoresAsociados(): Promise<AsociacionProductor
 
   return res.json() as Promise<AsociacionProductorItem[]>;
 }
+
+export interface AsociacionTecnicoItem {
+  asociacionId: string;
+  fechaAsociacion: string;
+  tecnico: {
+    id: string;
+    nombre: string | null;
+    email: string;
+    rol: string;
+  };
+}
+
+/**
+ * Vincula un técnico extensionista a la cuenta del productor (US-11 / Opción A).
+ */
+export async function vincularTecnicoExtensionista(email: string): Promise<{ mensaje: string; asociacionId: string }> {
+  const token = getToken();
+  if (!token) throw new ApiError('No hay sesión activa.', 401);
+
+  const res = await fetch(`${API_URL}/api/productor/tecnicos`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new ApiError(data?.error || 'Error al vincular el técnico extensionista', res.status);
+  }
+
+  return data;
+}
+
+/**
+ * Consulta la lista de técnicos autorizados por el productor (US-11).
+ */
+export async function obtenerTecnicosAutorizados(): Promise<AsociacionTecnicoItem[]> {
+  const token = getToken();
+  if (!token) throw new ApiError('No hay sesión activa.', 401);
+
+  const res = await fetch(`${API_URL}/api/productor/tecnicos`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new ApiError('Error al obtener técnicos autorizados', res.status);
+  }
+
+  return res.json() as Promise<AsociacionTecnicoItem[]>;
+}
+
+/**
+ * Revoca el acceso otorgado a un técnico extensionista (US-11).
+ */
+export async function revocarAccesoTecnico(tecnicoId: string): Promise<void> {
+  const token = getToken();
+  if (!token) throw new ApiError('No hay sesión activa.', 401);
+
+  const res = await fetch(`${API_URL}/api/productor/tecnicos/${encodeURIComponent(tecnicoId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(data?.error || 'Error al revocar acceso al técnico', res.status);
+  }
+}

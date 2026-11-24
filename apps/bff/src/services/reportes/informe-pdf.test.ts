@@ -163,7 +163,7 @@ describe('evaluarAccesoParcela — Reglas de Autorización US-11 CA 3', () => {
     const res = evaluarAccesoParcela(USUARIO_TECNICO_ASOCIADO, PARCELA_TEST.userId, false);
     assert.equal(res.permitida, false);
     assert.equal(res.motivo, 'FORBIDDEN');
-    assert.ok(res.error?.includes('Acceso denegado'));
+    assert.equal(res.error, 'Parcela no encontrada');
   });
 
   it('rechaza con 403 Forbidden si un usuario no técnico intenta acceder a parcela ajena aun con supuesto flag asociado', () => {

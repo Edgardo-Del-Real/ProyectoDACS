@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { buscarParcelaConAcceso } from '../services/reportes/informe-pdf.js';
+import { buscarParcelaConAcceso } from '../services/acceso-parcela.js';
 import {
   HORIZONTE_MAXIMO,
   HORIZONTE_MINIMO,
@@ -104,7 +104,7 @@ export const rotacionRoutes: FastifyPluginAsync = async (app) => {
         // Se filtra por dueño o técnico extensionista asociado: si la parcela existe pero es
         // de otro usuario se responde 404, igual que el resto del BFF. Un 403
         // confirmaría que el ID existe y habilitaría enumeración.
-        const parcela = await buscarParcelaConAcceso(parcelaId, userId);
+        const parcela = await buscarParcelaConAcceso(parcelaId, userId, request.user.rol);
 
         if (!parcela) {
           return reply.code(404).send({ error: 'Parcela no encontrada' });
