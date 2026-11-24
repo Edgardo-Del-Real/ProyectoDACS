@@ -30,6 +30,10 @@ model Usuario {
   updatedAt    DateTime    @updatedAt
   parcelas     Parcela[]
   alertas      Alerta[]
+
+  // Asociaciones entre técnicos extensionistas y productores asesorados (Fase 2 / US-11)
+  asociacionesComoTecnico   AsociacionProductor[] @relation("TecnicoAsociaciones")
+  asociacionesComoProductor AsociacionProductor[] @relation("ProductorAsociaciones")
 }
 
 model Parcela {
@@ -136,6 +140,21 @@ model ParametroEconomico {
   updatedAt         DateTime @updatedAt
 
   @@index([cultivo])
+}
+
+// Asociación entre un Técnico Extensionista y un Productor agrícola (Fase 2 / US-11)
+model AsociacionProductor {
+  id          String   @id @default(cuid())
+  tecnicoId   String
+  productorId String
+  createdAt   DateTime @default(now())
+
+  tecnico   Usuario @relation("TecnicoAsociaciones", fields: [tecnicoId], references: [id], onDelete: Cascade)
+  productor Usuario @relation("ProductorAsociaciones", fields: [productorId], references: [id], onDelete: Cascade)
+
+  @@unique([tecnicoId, productorId])
+  @@index([tecnicoId])
+  @@index([productorId])
 }
 
 // Registro de alertas tempranas de heladas y estrés hídrico por parcela (US-06).

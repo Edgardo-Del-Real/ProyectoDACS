@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { prisma } from '../src/db.js';
 
 interface CultivoSeed {
@@ -367,6 +368,116 @@ export async function main() {
   // los carga `obtenerCotizacionesMercado()` mediante refresco lazy (si no hay datos
   // o tienen más de 6 horas) o mediante el worker `npm run sync:mercado`.
   console.log('ℹ️  Cotizaciones de mercado: se obtienen de la Bolsa de Cereales en runtime.');
+
+  // 5. Usuarios de prueba y asociación técnico-productor (Fase 2 / US-11)
+  // Contraseña de acceso para los usuarios de prueba: "12345678"
+  const passwordHash = await bcrypt.hash('12345678', 10);
+
+  const productor = await prisma.usuario.upsert({
+    where: { email: 'productor@dacs.com' },
+    update: {
+      passwordHash,
+      nombre: 'Juan Carlos Rossi',
+      rol: 'AGRICULTOR',
+    },
+    create: {
+      email: 'productor@dacs.com',
+      passwordHash,
+      nombre: 'Juan Carlos Rossi',
+      rol: 'AGRICULTOR',
+    },
+  });
+
+  const tecnico = await prisma.usuario.upsert({
+    where: { email: 'tecnico@dacs.com' },
+    update: {
+      passwordHash,
+      nombre: 'Ing. Agr. Marcelo Morales (Asesor INTA)',
+      rol: 'TECNICO',
+    },
+    create: {
+      email: 'tecnico@dacs.com',
+      passwordHash,
+      nombre: 'Ing. Agr. Marcelo Morales (Asesor INTA)',
+      rol: 'TECNICO',
+    },
+  });
+
+  await prisma.asociacionProductor.upsert({
+    where: {
+      tecnicoId_productorId: {
+        tecnicoId: tecnico.id,
+        productorId: productor.id,
+      },
+    },
+    update: {},
+    create: {
+      tecnicoId: tecnico.id,
+      productorId: productor.id,
+    },
+  });
+
+  const parcelaExistente = await prisma.parcela.findFirst({
+    where: { userId: productor.id },
+  });
+
+  if (!parcelaExistente) {
+    const parcela = await prisma.parcela.create({
+      data: {
+        userId: productor.id,
+        nombre: 'Lote Don Pedro (Campo Norte)',
+        hectareas: 85.5,
+        poligono: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [-62.26, -38.71],
+              [-62.24, -38.71],
+              [-62.24, -38.73],
+              [-62.26, -38.73],
+              [-62.26, -38.71],
+            ],
+          ],
+        },
+      },
+    });
+
+    await prisma.campaniaCultivo.createMany({
+      data: [
+        {
+          parcelaId: parcela.id,
+          cultivo: 'Trigo pan',
+          campania: '2025/2026',
+          rindeReal: 3.9,
+          observaciones: 'Campaña con adecuada disponibilidad de fósforo.',
+        },
+        {
+          parcelaId: parcela.id,
+          cultivo: 'Soja 1ra',
+          campania: '2024/2025',
+          rindeReal: 3.4,
+          observaciones: 'Buen rastrojo remanente.',
+        },
+      ],
+    });
+
+    await prisma.pronosticoClima.create({
+      data: {
+        parcelaId: parcela.id,
+        datos: [
+          { fecha: '2026-11-15', tempMax: 26.5, tempMin: 14.2, precipitacion: 0 },
+          { fecha: '2026-11-16', tempMax: 28.0, tempMin: 15.0, precipitacion: 0 },
+          { fecha: '2026-11-17', tempMax: 24.1, tempMin: 12.8, precipitacion: 18.5 },
+          { fecha: '2026-11-18', tempMax: 21.0, tempMin: 10.5, precipitacion: 4.2 },
+          { fecha: '2026-11-19', tempMax: 23.4, tempMin: 11.0, precipitacion: 0 },
+          { fecha: '2026-11-20', tempMax: 25.0, tempMin: 13.2, precipitacion: 0 },
+          { fecha: '2026-11-21', tempMax: 27.2, tempMin: 14.5, precipitacion: 0 },
+        ],
+      },
+    });
+  }
+
+  console.log('✅ Asociación técnico-productor y parcela demo sembradas.');
   console.log('🌾 Seed completado con éxito.');
 }
 

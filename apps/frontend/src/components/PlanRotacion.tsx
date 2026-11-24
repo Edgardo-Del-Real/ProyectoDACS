@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api/http';
+import { apiFetch, ApiError } from '../api/http';
+import { descargarInformePdf } from '../api/reportes';
 
 interface PasoRotacion {
   orden: number;
@@ -52,6 +53,21 @@ export function PlanRotacion({ id, revision }: { id: string; revision: number })
   const [anios, setAnios] = useState<number>(4);
   const [cultivosExcluidos, setCultivosExcluidos] = useState<string[]>([]);
   const [intento, setIntento] = useState(0);
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
+  const [errorPdf, setErrorPdf] = useState<string | null>(null);
+
+  const handleDescargarInforme = async () => {
+    setDescargandoPdf(true);
+    setErrorPdf(null);
+    try {
+      await descargarInformePdf(id);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'No se pudo descargar el informe.';
+      setErrorPdf(msg);
+    } finally {
+      setDescargandoPdf(false);
+    }
+  };
 
   const toggleCultivo = (nombre: string) => {
     setCultivosExcluidos((prev) =>
@@ -110,8 +126,18 @@ export function PlanRotacion({ id, revision }: { id: string; revision: number })
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <label htmlFor="select-anios-rotacion" className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={handleDescargarInforme}
+            disabled={descargandoPdf}
+            title="Descargar informe técnico agronómico en PDF con planificación y proyecciones (US-11)"
+            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs sm:text-sm font-semibold shadow-2xs transition inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>{descargandoPdf ? '⏳' : '📄'}</span>
+            <span>{descargandoPdf ? 'Generando PDF...' : 'Descargar informe'}</span>
+          </button>
+          <label htmlFor="select-anios-rotacion" className="text-xs font-semibold text-slate-700 whitespace-nowrap ml-1">
             Horizonte:
           </label>
           <select
@@ -128,6 +154,22 @@ export function PlanRotacion({ id, revision }: { id: string; revision: number })
           </select>
         </div>
       </div>
+
+      {errorPdf && (
+        <div
+          role="alert"
+          className="rounded-xl p-3.5 bg-red-50 border border-red-200 text-red-800 text-xs sm:text-sm flex items-center justify-between gap-3"
+        >
+          <span>⚠️ {errorPdf}</span>
+          <button
+            type="button"
+            onClick={() => setErrorPdf(null)}
+            className="text-red-700 font-bold hover:text-red-900"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Selector de cultivos que el productor trabaja en el lote */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">

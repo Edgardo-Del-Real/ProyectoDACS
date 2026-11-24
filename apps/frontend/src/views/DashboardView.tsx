@@ -4,6 +4,7 @@ import { useAuth } from '../context/useAuth';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PanelAlertas } from '../components/PanelAlertas';
 import { eliminarParcela } from '../api/parcelas';
+import { obtenerProductoresAsociados, type AsociacionProductorItem } from '../api/reportes';
 import { ApiError } from '../api/http';
 
 interface Parcela {
@@ -42,6 +43,10 @@ export const DashboardView: React.FC = () => {
   const [parcelaAEliminar, setParcelaAEliminar] = useState<Parcela | null>(null);
   const [eliminandoParcela, setEliminandoParcela] = useState(false);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
+
+  // Estado para técnicos extensionistas y productores asesorados (US-11)
+  const [productoresAsociados, setProductoresAsociados] = useState<AsociacionProductorItem[]>([]);
+  const [cargandoAsociados, setCargandoAsociados] = useState(false);
 
   const getToken = () => localStorage.getItem('token') || localStorage.getItem('dacs_token');
 
@@ -101,13 +106,26 @@ export const DashboardView: React.FC = () => {
       if (data.length > 0) {
         await cargarClimaParcela(data[0].id);
       }
+
+      // Si el usuario es técnico extensionista, cargar sus productores asesorados (US-11)
+      if (user?.rol === 'TECNICO') {
+        setCargandoAsociados(true);
+        try {
+          const prods = await obtenerProductoresAsociados();
+          setProductoresAsociados(prods);
+        } catch {
+          // Fallo no bloqueante de consulta técnica
+        } finally {
+          setCargandoAsociados(false);
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error de conexión con el BFF.';
       setError(message);
     } finally {
       setCargando(false);
     }
-  }, [cargarClimaParcela]);
+  }, [cargarClimaParcela, user?.rol]);
 
   const handleConfirmarEliminar = async () => {
     if (!parcelaAEliminar) return;
@@ -255,6 +273,91 @@ export const DashboardView: React.FC = () => {
 
           {/* Panel de Alertas de Helada y Estrés Hídrico (US-06) */}
           <PanelAlertas tieneParcelas={parcelas.length > 0} revision={revisionAlertas} />
+
+          {/* Sección de Asesoramiento Técnico: Productores Asociados (US-11) */}
+          {user?.rol === 'TECNICO' && (
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span>👨‍🌾</span> Productores y Lotes Asesorados
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Como técnico extensionista podés consultar la planificación, rotación y descargar informes PDF de tus productores vinculados (US-11).
+                  </p>
+                </div>
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  {productoresAsociados.length} productor(es)
+                </span>
+              </div>
+
+              {cargandoAsociados ? (
+                <div className="py-6 text-center text-slate-400 text-xs">
+                  Cargando productores asesorados...
+                </div>
+              ) : productoresAsociados.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-5 text-center space-y-1">
+                  <p className="text-xs font-semibold text-slate-700">
+                    No tenés productores asociados actualmente.
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Podés vincular productores por email o consultar parcelas autorizadas de tus clientes.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {productoresAsociados.map((item) => (
+                    <div
+                      key={item.asociacionId}
+                      className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-200/60 pb-2">
+                        <div>
+                          <h4 className="font-bold text-slate-900 text-sm">
+                            {item.productor.nombre || item.productor.email}
+                          </h4>
+                          <span className="text-xs text-slate-500">{item.productor.email}</span>
+                        </div>
+                        <span className="text-[11px] text-slate-500">
+                          Vinculado: {new Date(item.fechaAsociacion).toLocaleDateString('es-AR')}
+                        </span>
+                      </div>
+
+                      {item.productor.parcelas.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">
+                          El productor aún no ha registrado parcelas en el mapa.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {item.productor.parcelas.map((parc) => (
+                            <div
+                              key={parc.id}
+                              className="bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between gap-2 hover:border-emerald-300 transition"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-slate-800 truncate">
+                                  📍 {parc.nombre || 'Parcela sin nombre'}
+                                </p>
+                                <span className="text-[11px] text-slate-500">
+                                  {parc.hectareas.toFixed(1)} ha
+                                </span>
+                              </div>
+                              <Link
+                                to={`/parcelas/${parc.id}`}
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-md border border-emerald-200 transition shrink-0"
+                              >
+                                Asesorar / PDF ➔
+                              </Link>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Columna Derecha: Clima hiperlocal de la parcela */}
